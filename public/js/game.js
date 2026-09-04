@@ -1,17 +1,28 @@
 /**
  * game.js
- * Interactive Color Bottle Puzzle Engine
+ * Hidden-Order Bottle Position Matching Game Engine
+ * 
+ * Rules:
+ * - Player sees scrambled bottles on a single shelf.
+ * - The target arrangement is hidden.
+ * - Player drags one bottle onto another to swap positions (or taps to swap).
+ * - Immediate feedback after every swap: Matched: X / N, Errors.
+ * - Automatic finish as soon as Matched === N.
  */
 
 class ColorBottleGame {
   constructor(options = {}) {
     this.onProgress = options.onProgress || (() => {});
     this.onFinish = options.onFinish || (() => {});
-    
+
     this.puzzle = null;
     this.settings = null;
     this.isRacing = false;
     this.isCompleted = false;
+
+    this.currentBottles = []; // Array of bottles currently on the shelf
+    this.targetSequence = []; // Secret target arrangement
+    this.bottleCount = 0;
 
     this.matchedCount = 0;
     this.errorsCount = 0;
@@ -20,20 +31,16 @@ class ColorBottleGame {
     this.timerStartTime = null;
     this.timerAnimationId = null;
 
-    // Slots & Bottle state
-    this.dockBottles = []; // bottles in player hand/dock
-    this.placedSlots = []; // bottles matched or placed in slots [ { slotIndex, bottle } ]
-    this.selectedDockIndex = null;
-    this.selectedSlotIndex = null;
+    // Drag & Drop State
+    this.draggedIndex = null;
+    this.selectedTapIndex = null;
+    this.touchGhostEl = null;
 
     // DOM Elements
     this.matchedDisplay = document.getElementById('stat-matched');
     this.errorsDisplay = document.getElementById('stat-errors');
     this.timeDisplay = document.getElementById('stat-time');
     this.shelfSlotsEl = document.getElementById('shelf-slots');
-    this.dockBottlesEl = document.getElementById('dock-bottles');
-    this.shelfTitleEl = document.getElementById('shelf-title');
-    this.modeNoteEl = document.getElementById('game-mode-note');
   }
 
   initRace(puzzle, settings, startTime) {
@@ -42,25 +49,22 @@ class ColorBottleGame {
     this.settings = settings || {};
     this.isRacing = false;
     this.isCompleted = false;
-    this.matchedCount = 0;
+
+    this.bottleCount = puzzle.bottleCount;
+    this.targetSequence = [...puzzle.targetSequence];
+    // Start with the identical scrambled bottles
+    this.currentBottles = puzzle.initialBottles.map((b, idx) => ({
+      ...b,
+      uniqueKey: `${b.colorId}_${idx}`
+    }));
+
+    this.draggedIndex = null;
+    this.selectedTapIndex = null;
     this.errorsCount = 0;
     this.finishTime = null;
-    this.selectedDockIndex = null;
-    this.selectedSlotIndex = null;
 
-    const total = puzzle.bottleCount;
-    this.placedSlots = new Array(total).fill(null);
-
-    if (this.settings.gameplayMode === 'mystery_box') {
-      // In mystery mode, bottles start placed in slots and player swaps them
-      this.dockBottles = [];
-      this.placedSlots = puzzle.initialBottles.map((b, idx) => ({ ...b, currentSlot: idx }));
-      this.matchedCount = this.calculateMysteryMatches();
-    } else {
-      // Speed match mode: bottles are in dock, slots are color targets
-      this.dockBottles = puzzle.initialBottles.map((b, idx) => ({ ...b, dockIndex: idx }));
-      this.matchedCount = 0;
-    }
+    // Initial matches calculation
+    this.matchedCount = this.calculateMatches();
 
     this.updateHUD();
     this.render();
@@ -92,10 +96,19 @@ class ColorBottleGame {
     }
   }
 
+  calculateMatches() {
+    let matches = 0;
+    for (let i = 0; i < this.bottleCount; i++) {
+      if (this.currentBottles[i].colorId === this.targetSequence[i].colorId) {
+        matches++;
+      }
+    }
+    return matches;
+  }
+
   updateHUD() {
-    const total = this.puzzle ? this.puzzle.bottleCount : 12;
     if (this.matchedDisplay) {
-      this.matchedDisplay.textContent = `${this.matchedCount} / ${total}`;
+      this.matchedDisplay.textContent = `${this.matchedCount} / ${this.bottleCount}`;
     }
     if (this.errorsDisplay) {
       this.errorsDisplay.textContent = `${this.errorsCount}`;
@@ -103,149 +116,67 @@ class ColorBottleGame {
   }
 
   // ==========================================
-  // Speed Match Mode Interactions
+  // Bottle Swap Action (Core Game Logic)
   // ==========================================
-  handleDockBottleClick(index) {
+  swapBottles(indexA, indexB) {
     if (!this.isRacing || this.isCompleted) return;
-    if (!this.dockBottles[index]) return;
+    if (indexA === indexB || indexA === null || indexB === null) return;
+    if (indexA < 0 || indexA >= this.bottleCount || indexB < 0 || indexB >= this.bottleCount) return;
 
-    if (this.selectedDockIndex === index) {
-      // Deselect
-      this.selectedDockIndex = null;
-    } else {
-      this.selectedDockIndex = index;
-      window.sounds?.playPop();
-    }
-    this.render();
-  }
+    const prevMatches = this.matchedCount;
 
-  handleSlotClick(slotIndex) {
-    if (!this.isRacing || this.isCompleted) return;
+    // Swap the two bottles in current arrangement
+    const temp = this.currentBottles[indexA];
+    this.currentBottles[indexA] = this.currentBottles[indexB];
+    this.currentBottles[indexB] = temp;
 
-    if (this.settings.gameplayMode === 'mystery_box') {
-      this.handleMysterySlotClick(slotIndex);
-      return;
-    }
+    // Calculate new matches
+    const newMatches = this.calculateMatches();
+    this.matchedCount = newMatches;
 
-    // Speed match mode: If already matched, slot is locked
-    if (this.placedSlots[slotIndex]) {
-      return;
-    }
-
-    if (this.selectedDockIndex === null) {
-      return;
-    }
-
-    const bottle = this.dockBottles[this.selectedDockIndex];
-    const targetSlot = this.puzzle.targetSequence[slotIndex];
-
-    if (!bottle || !targetSlot) return;
-
-    // Check if match is correct
-    if (bottle.colorId === targetSlot.colorId) {
-      // Correct match!
-      this.placedSlots[slotIndex] = bottle;
-      this.dockBottles.splice(this.selectedDockIndex, 1);
-      this.selectedDockIndex = null;
-      this.matchedCount++;
-
-      window.sounds?.playMatchSuccess();
-      this.updateHUD();
-      this.render();
-
-      // Trigger visual match pop animation
-      const slotEl = document.querySelector(`.target-slot[data-slot="${slotIndex}"] .bottle-wrapper`);
-      if (slotEl) slotEl.classList.add('match-pop');
-
-      // Immediately report progress
-      this.onProgress({
-        matched: this.matchedCount,
-        total: this.puzzle.bottleCount,
-        errors: this.errorsCount
-      });
-
-      // AUTOMATIC FINISH CHECK:
-      // Last correct match -> Puzzle completed -> Finish time automatically recorded
-      if (this.matchedCount === this.puzzle.bottleCount) {
-        this.triggerAutoFinish();
-      }
-    } else {
-      // Wrong match attempt!
+    // Evaluate if attempt improved the puzzle or was an error
+    let wasError = false;
+    if (newMatches <= prevMatches && newMatches < this.bottleCount) {
       this.errorsCount++;
+      wasError = true;
       window.sounds?.playErrorBuzz();
-
-      // Shake dock bottle to indicate error
-      const dockBottleEl = document.querySelector(`.bottle-dock-item[data-index="${this.selectedDockIndex}"] .bottle-wrapper`);
-      if (dockBottleEl) {
-        dockBottleEl.classList.add('shake-error');
-        setTimeout(() => dockBottleEl.classList.remove('shake-error'), 400);
-      }
-
-      this.updateHUD();
-
-      // Immediately report progress with new error
-      this.onProgress({
-        matched: this.matchedCount,
-        total: this.puzzle.bottleCount,
-        errors: this.errorsCount
-      });
-    }
-  }
-
-  // ==========================================
-  // Mystery Box Mode (TikTok Challenge Style)
-  // ==========================================
-  calculateMysteryMatches() {
-    let count = 0;
-    for (let i = 0; i < this.puzzle.bottleCount; i++) {
-      if (this.placedSlots[i] && this.placedSlots[i].colorId === this.puzzle.targetSequence[i].colorId) {
-        count++;
-      }
-    }
-    return count;
-  }
-
-  handleMysterySlotClick(slotIndex) {
-    if (this.selectedSlotIndex === null) {
-      this.selectedSlotIndex = slotIndex;
-      window.sounds?.playPop();
-      this.render();
-    } else if (this.selectedSlotIndex === slotIndex) {
-      this.selectedSlotIndex = null;
-      this.render();
     } else {
-      // Swap two slots
-      const idxA = this.selectedSlotIndex;
-      const idxB = slotIndex;
-      this.selectedSlotIndex = null;
+      window.sounds?.playMatchSuccess();
+    }
 
-      const prevMatches = this.matchedCount;
-      [this.placedSlots[idxA], this.placedSlots[idxB]] = [this.placedSlots[idxB], this.placedSlots[idxA]];
+    this.updateHUD();
+    this.render();
 
-      const newMatches = this.calculateMysteryMatches();
-      this.matchedCount = newMatches;
-
-      if (newMatches <= prevMatches && newMatches < this.puzzle.bottleCount) {
-        // Swap did not improve matching -> count as error/failed attempt
-        this.errorsCount++;
-        window.sounds?.playErrorBuzz();
-      } else {
-        window.sounds?.playMatchSuccess();
+    // Visual feedback animations
+    const slotA = this.shelfSlotsEl.querySelector(`.bottle-slot[data-index="${indexA}"] .bottle-wrapper`);
+    const slotB = this.shelfSlotsEl.querySelector(`.bottle-slot[data-index="${indexB}"] .bottle-wrapper`);
+    
+    if (wasError) {
+      if (slotA) {
+        slotA.classList.add('shake-error');
+        setTimeout(() => slotA.classList.remove('shake-error'), 400);
       }
-
-      this.updateHUD();
-      this.render();
-
-      this.onProgress({
-        matched: this.matchedCount,
-        total: this.puzzle.bottleCount,
-        errors: this.errorsCount
-      });
-
-      // Automatic finish if all match
-      if (this.matchedCount === this.puzzle.bottleCount) {
-        this.triggerAutoFinish();
+      if (slotB) {
+        slotB.classList.add('shake-error');
+        setTimeout(() => slotB.classList.remove('shake-error'), 400);
       }
+    } else {
+      if (slotA) slotA.classList.add('match-pop');
+      if (slotB) slotB.classList.add('match-pop');
+    }
+
+    // Immediately emit progress to rivals
+    this.onProgress({
+      matched: this.matchedCount,
+      total: this.bottleCount,
+      errors: this.errorsCount
+    });
+
+    // AUTOMATIC FINISH CHECK:
+    // As soon as all bottles reach their correct positions (Matched: N / N),
+    // automatically end and record finish time!
+    if (this.matchedCount === this.bottleCount) {
+      this.triggerAutoFinish();
     }
   }
 
@@ -267,7 +198,6 @@ class ColorBottleGame {
 
     window.sounds?.playVictoryFanfare();
 
-    // Call finish callback with recorded finish time and errors
     this.onFinish({
       finishTime: this.finishTime,
       errors: this.errorsCount
@@ -275,114 +205,175 @@ class ColorBottleGame {
   }
 
   // ==========================================
-  // DOM Rendering
+  // DOM Rendering & Drag/Drop Event Binding
   // ==========================================
   render() {
-    if (!this.puzzle) return;
-
-    if (this.shelfTitleEl) {
-      this.shelfTitleEl.textContent = this.settings.gameplayMode === 'mystery_box' 
-        ? '📦 Mystery Sequence (Swap to Match)'
-        : '🎯 Target Pattern (Match Bottles)';
-    }
-
-    if (this.modeNoteEl) {
-      this.modeNoteEl.textContent = this.settings.gameplayMode === 'mystery_box'
-        ? 'Tap two bottles to swap their positions. Matches update automatically.'
-        : 'Tap a bottle below, then tap its matching color slot above.';
-    }
-
-    // 1. Render Slots
+    if (!this.shelfSlotsEl || !this.currentBottles) return;
     this.shelfSlotsEl.innerHTML = '';
-    const isMystery = this.settings.gameplayMode === 'mystery_box';
 
-    for (let i = 0; i < this.puzzle.bottleCount; i++) {
+    for (let i = 0; i < this.bottleCount; i++) {
+      const bottle = this.currentBottles[i];
       const slotEl = document.createElement('div');
-      slotEl.className = 'target-slot';
-      slotEl.dataset.slot = i;
+      slotEl.className = 'bottle-slot';
+      slotEl.dataset.index = i;
 
-      const target = this.puzzle.targetSequence[i];
-      const placedBottle = this.placedSlots[i];
-      const isCorrect = placedBottle && placedBottle.colorId === target.colorId;
+      const isSelected = this.selectedTapIndex === i;
 
-      if (isCorrect) slotEl.classList.add('correct');
-
-      if (isMystery) {
-        // In mystery mode, render placed bottle with selection highlight if active
-        const isSelected = this.selectedSlotIndex === i;
-        slotEl.innerHTML = `
-          <div class="bottle-wrapper ${isSelected ? 'selected' : ''}" style="--bottle-color: ${placedBottle.hex}">
-            <div class="bottle-cork"></div>
-            <div class="bottle-neck"></div>
-            <div class="bottle-body">
-              <div class="bottle-liquid" style="background: linear-gradient(180deg, ${placedBottle.secondary} 0%, ${placedBottle.hex} 100%);">
-                <div class="liquid-wave"></div>
-              </div>
+      slotEl.innerHTML = `
+        <div class="bottle-wrapper ${isSelected ? 'selected' : ''}" draggable="true" data-index="${i}" style="--bottle-color: ${bottle.hex}">
+          <div class="bottle-cork"></div>
+          <div class="bottle-neck"></div>
+          <div class="bottle-body">
+            <div class="bottle-liquid" style="background: linear-gradient(180deg, ${bottle.secondary} 0%, ${bottle.hex} 100%);">
+              <div class="liquid-wave"></div>
             </div>
           </div>
-          <span class="slot-index">#${i + 1}</span>
-        `;
-      } else {
-        // Speed match mode
-        if (placedBottle) {
-          slotEl.innerHTML = `
-            <div class="bottle-wrapper" style="--bottle-color: ${placedBottle.hex}">
-              <div class="bottle-cork"></div>
-              <div class="bottle-neck"></div>
-              <div class="bottle-body">
-                <div class="bottle-liquid" style="background: linear-gradient(180deg, ${placedBottle.secondary} 0%, ${placedBottle.hex} 100%);">
-                  <div class="liquid-wave"></div>
-                </div>
-              </div>
-            </div>
-            <span class="slot-index" style="color: var(--accent-green)">✓ #${i + 1}</span>
-          `;
-        } else {
-          // Empty slot with color target indicator
-          slotEl.innerHTML = `
-            <div class="slot-circle" style="background: radial-gradient(circle, ${target.hex}44 0%, transparent 70%); border-color: ${target.hex}">
-              <div style="width: 18px; height: 18px; border-radius: 50%; background: ${target.hex}; box-shadow: 0 0 8px ${target.hex}"></div>
-            </div>
-            <span class="slot-index">#${i + 1}</span>
-          `;
+        </div>
+        <span class="slot-index">#${i + 1}</span>
+      `;
+
+      const bottleWrapper = slotEl.querySelector('.bottle-wrapper');
+
+      // ----------------------------------------------------
+      // 1. Desktop HTML5 Drag & Drop
+      // ----------------------------------------------------
+      bottleWrapper.addEventListener('dragstart', (e) => {
+        if (!this.isRacing || this.isCompleted) {
+          e.preventDefault();
+          return;
         }
-      }
+        this.draggedIndex = i;
+        this.selectedTapIndex = null;
+        bottleWrapper.classList.add('dragging');
+        e.dataTransfer.setData('text/plain', i.toString());
+        e.dataTransfer.effectAllowed = 'move';
+      });
 
-      slotEl.addEventListener('click', () => this.handleSlotClick(i));
+      bottleWrapper.addEventListener('dragend', () => {
+        bottleWrapper.classList.remove('dragging');
+        this.draggedIndex = null;
+        this.shelfSlotsEl.querySelectorAll('.bottle-slot').forEach(s => s.classList.remove('drag-over'));
+      });
+
+      slotEl.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (this.draggedIndex !== null && this.draggedIndex !== i) {
+          slotEl.classList.add('drag-over');
+        }
+      });
+
+      slotEl.addEventListener('dragleave', () => {
+        slotEl.classList.remove('drag-over');
+      });
+
+      slotEl.addEventListener('drop', (e) => {
+        e.preventDefault();
+        slotEl.classList.remove('drag-over');
+        if (this.draggedIndex !== null && this.draggedIndex !== i) {
+          const fromIdx = this.draggedIndex;
+          this.draggedIndex = null;
+          this.swapBottles(fromIdx, i);
+        }
+      });
+
+      // ----------------------------------------------------
+      // 2. Mobile Touch Drag & Drop
+      // ----------------------------------------------------
+      let touchMoved = false;
+      let startX = 0;
+      let startY = 0;
+
+      bottleWrapper.addEventListener('touchstart', (e) => {
+        if (!this.isRacing || this.isCompleted) return;
+        const touch = e.touches[0];
+        startX = touch.clientX;
+        startY = touch.clientY;
+        touchMoved = false;
+        this.draggedIndex = i;
+      }, { passive: true });
+
+      bottleWrapper.addEventListener('touchmove', (e) => {
+        if (!this.isRacing || this.isCompleted || this.draggedIndex === null) return;
+        const touch = e.touches[0];
+        const distX = Math.abs(touch.clientX - startX);
+        const distY = Math.abs(touch.clientY - startY);
+
+        if (distX > 8 || distY > 8) {
+          touchMoved = true;
+          // Create touch ghost if not present
+          if (!this.touchGhostEl) {
+            this.touchGhostEl = bottleWrapper.cloneNode(true);
+            this.touchGhostEl.classList.add('touch-ghost');
+            document.body.appendChild(this.touchGhostEl);
+          }
+          this.touchGhostEl.style.left = `${touch.clientX}px`;
+          this.touchGhostEl.style.top = `${touch.clientY}px`;
+
+          // Highlight slot under finger
+          const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+          const hoveredSlot = targetEl ? targetEl.closest('.bottle-slot') : null;
+          
+          this.shelfSlotsEl.querySelectorAll('.bottle-slot').forEach(s => {
+            if (s === hoveredSlot && Number(s.dataset.index) !== this.draggedIndex) {
+              s.classList.add('drag-over');
+            } else {
+              s.classList.remove('drag-over');
+            }
+          });
+        }
+      }, { passive: true });
+
+      bottleWrapper.addEventListener('touchend', (e) => {
+        if (this.touchGhostEl) {
+          this.touchGhostEl.remove();
+          this.touchGhostEl = null;
+        }
+
+        if (touchMoved && this.draggedIndex !== null) {
+          const touch = e.changedTouches[0];
+          const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+          const dropSlot = targetEl ? targetEl.closest('.bottle-slot') : null;
+
+          if (dropSlot) {
+            const toIdx = Number(dropSlot.dataset.index);
+            if (!isNaN(toIdx) && toIdx !== this.draggedIndex) {
+              const fromIdx = this.draggedIndex;
+              this.draggedIndex = null;
+              this.swapBottles(fromIdx, toIdx);
+            }
+          }
+        }
+
+        this.shelfSlotsEl.querySelectorAll('.bottle-slot').forEach(s => s.classList.remove('drag-over'));
+        this.draggedIndex = null;
+      });
+
+      // ----------------------------------------------------
+      // 3. Mobile Tap-to-Swap (Convenient Fast Fallback)
+      // ----------------------------------------------------
+      bottleWrapper.addEventListener('click', () => {
+        if (!this.isRacing || this.isCompleted) return;
+        if (touchMoved) return; // ignore tap if dragged
+
+        if (this.selectedTapIndex === null) {
+          // Select bottle A
+          this.selectedTapIndex = i;
+          window.sounds?.playPop();
+          this.render();
+        } else if (this.selectedTapIndex === i) {
+          // Deselect
+          this.selectedTapIndex = null;
+          this.render();
+        } else {
+          // Swap bottle A and bottle B
+          const fromIdx = this.selectedTapIndex;
+          this.selectedTapIndex = null;
+          this.swapBottles(fromIdx, i);
+        }
+      });
+
       this.shelfSlotsEl.appendChild(slotEl);
-    }
-
-    // 2. Render Dock (Only relevant for Speed Match mode)
-    if (this.dockBottlesEl) {
-      if (isMystery) {
-        this.dockBottlesEl.parentElement.style.display = 'none';
-      } else {
-        this.dockBottlesEl.parentElement.style.display = 'block';
-        this.dockBottlesEl.innerHTML = '';
-
-        this.dockBottles.forEach((bottle, idx) => {
-          const itemEl = document.createElement('div');
-          itemEl.className = 'bottle-dock-item';
-          itemEl.dataset.index = idx;
-
-          const isSelected = this.selectedDockIndex === idx;
-
-          itemEl.innerHTML = `
-            <div class="bottle-wrapper ${isSelected ? 'selected' : ''}" style="--bottle-color: ${bottle.hex}">
-              <div class="bottle-cork"></div>
-              <div class="bottle-neck"></div>
-              <div class="bottle-body">
-                <div class="bottle-liquid" style="background: linear-gradient(180deg, ${bottle.secondary} 0%, ${bottle.hex} 100%);">
-                  <div class="liquid-wave"></div>
-                </div>
-              </div>
-            </div>
-          `;
-
-          itemEl.addEventListener('click', () => this.handleDockBottleClick(idx));
-          this.dockBottlesEl.appendChild(itemEl);
-        });
-      }
     }
   }
 }

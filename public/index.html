@@ -91,7 +91,7 @@
             <div class="form-group">
               <label class="form-label" for="select-difficulty">Puzzle Difficulty</label>
               <select id="select-difficulty" class="select-input">
-                <option value="easy">Easy (6 Bottles)</option>
+                <option value="easy">Easy (5 Bottles)</option>
                 <option value="medium">Medium (8 Bottles)</option>
                 <option value="hard" selected>Hard (12 Bottles) ★</option>
                 <option value="expert">Expert (16 Bottles)</option>
@@ -109,18 +109,10 @@
               </select>
             </div>
 
-            <div class="form-group">
-              <label class="form-label" for="select-mode">Game Mode</label>
-              <select id="select-mode" class="select-input">
-                <option value="speed_match" selected>Speed Match (Color Targets)</option>
-                <option value="mystery_box">Mystery Box (Viral TikTok Swap)</option>
-              </select>
-            </div>
-
-            <div class="form-group">
+            <div class="form-group" style="grid-column: span 2;">
               <label class="form-label">Error Penalty</label>
               <div class="toggle-switch-wrap">
-                <span style="font-size: 0.85rem; font-weight: 600;">Affect Finish Time</span>
+                <span style="font-size: 0.85rem; font-weight: 600;">Affect Finish Time (+seconds)</span>
                 <input type="checkbox" id="toggle-penalty" class="toggle-checkbox">
               </div>
             </div>
@@ -179,27 +171,19 @@
         <div id="rival-list" class="rival-list"></div>
       </div>
 
-      <!-- Playfield -->
+      <!-- Playfield: Single Scrambled Bottle Shelf with Drag & Drop -->
       <div class="playfield">
-        <!-- Target Shelf -->
         <div class="shelf-container">
-          <div class="section-label" style="margin-bottom: 10px;">
-            <span id="shelf-title">🎯 Target Pattern</span>
+          <div class="shelf-header">
+            <span class="shelf-title">🍾 Bottle Shelf</span>
+            <span class="shelf-hint">Drag onto another bottle to swap</span>
           </div>
-          <div id="shelf-slots" class="target-slots-grid"></div>
+          <div id="shelf-slots" class="bottle-slots-grid"></div>
         </div>
 
-        <!-- Mode Note -->
-        <div id="game-mode-note" style="font-size: 0.8rem; text-align: center; color: var(--text-secondary);">
-          Tap a bottle below, then tap its matching color slot above.
-        </div>
-
-        <!-- Player Bottle Dock -->
-        <div class="dock-container">
-          <div class="section-label" style="margin-bottom: 10px;">
-            <span>🍾 Your Bottles</span>
-          </div>
-          <div id="dock-bottles" class="bottles-grid"></div>
+        <div class="drag-instructions">
+          <span class="instruction-badge">💡 Secret Order</span>
+          <span>Find the hidden arrangement by swapping bottles! Instant progress updates after every swap. Finish is 100% automatic.</span>
         </div>
       </div>
     </main>

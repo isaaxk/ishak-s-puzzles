@@ -26,7 +26,7 @@ const COLOR_PALETTE = [
 ];
 
 const DIFFICULTY_MAP = {
-  easy: 6,
+  easy: 5,
   medium: 8,
   hard: 12,
   expert: 16
@@ -242,23 +242,27 @@ class GameManager {
       secondary: color.secondary
     }));
 
-    // Deterministically shuffle initial bottle positions for the dock so it's not solved initially
+    // Deterministically shuffle initial bottle positions
     const initialBottles = [...targetSequence];
-    // Fisher-Yates shuffle ensuring at least 80% bottles are displaced
-    for (let i = initialBottles.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [initialBottles[i], initialBottles[j]] = [initialBottles[j], initialBottles[i]];
-    }
-
-    // Safety check: ensure initial configuration is not already completely solved
+    const maxAllowedInitialMatches = Math.max(1, Math.floor(count / 4));
     let matches = 0;
-    for (let i = 0; i < initialBottles.length; i++) {
-      if (initialBottles[i].colorId === targetSequence[i].colorId) {
-        matches++;
+    let attempts = 0;
+    do {
+      for (let i = initialBottles.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [initialBottles[i], initialBottles[j]] = [initialBottles[j], initialBottles[i]];
       }
-    }
+      matches = 0;
+      for (let i = 0; i < initialBottles.length; i++) {
+        if (initialBottles[i].colorId === targetSequence[i].colorId) {
+          matches++;
+        }
+      }
+      attempts++;
+    } while (matches > maxAllowedInitialMatches && attempts < 50);
+
+    // If still completely matched, force-swap first two
     if (matches === count && count > 1) {
-      // Swap first two to prevent pre-solved state
       [initialBottles[0], initialBottles[1]] = [initialBottles[1], initialBottles[0]];
     }
 

@@ -41,7 +41,6 @@
   const btnLeaveRoom = document.getElementById('btn-leave-room');
   const selectDifficulty = document.getElementById('select-difficulty');
   const selectMaxPlayers = document.getElementById('select-max-players');
-  const selectMode = document.getElementById('select-mode');
   const togglePenalty = document.getElementById('toggle-penalty');
   const penaltySecRow = document.getElementById('penalty-seconds-row');
   const inputPenaltySec = document.getElementById('penalty-seconds');
@@ -192,7 +191,6 @@
     const settings = {
       difficulty: selectDifficulty.value,
       maxPlayers: Number(selectMaxPlayers.value),
-      gameplayMode: selectMode.value,
       errorPenaltyEnabled: togglePenalty.checked,
       penaltyPerError: Number(inputPenaltySec.value) || 2
     };
@@ -203,7 +201,6 @@
 
   selectDifficulty?.addEventListener('change', emitSettingsUpdate);
   selectMaxPlayers?.addEventListener('change', emitSettingsUpdate);
-  selectMode?.addEventListener('change', emitSettingsUpdate);
   togglePenalty?.addEventListener('change', () => {
     penaltySecRow.style.display = togglePenalty.checked ? 'flex' : 'none';
     emitSettingsUpdate();
@@ -225,7 +222,7 @@
     isHost = currentRoom.hostId === myPlayerId;
 
     // Adjust settings inputs based on host privileges
-    const formControls = [selectDifficulty, selectMaxPlayers, selectMode, togglePenalty, inputPenaltySec];
+    const formControls = [selectDifficulty, selectMaxPlayers, togglePenalty, inputPenaltySec];
     formControls.forEach(ctrl => {
       if (ctrl) ctrl.disabled = !isHost;
     });
@@ -238,7 +235,6 @@
     if (currentRoom.settings) {
       selectDifficulty.value = currentRoom.settings.difficulty || 'hard';
       selectMaxPlayers.value = currentRoom.settings.maxPlayers || 8;
-      selectMode.value = currentRoom.settings.gameplayMode || 'speed_match';
       togglePenalty.checked = Boolean(currentRoom.settings.errorPenaltyEnabled);
       penaltySecRow.style.display = togglePenalty.checked ? 'flex' : 'none';
       inputPenaltySec.value = currentRoom.settings.penaltyPerError || 2;
