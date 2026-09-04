@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Color Bottle Race — Multiplayer Matching Game</title>
+  <meta name="description" content="Fast-paced real-time multiplayer color bottle matching race. Same puzzle, instant progress, automatic finish!">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍾</text></svg>">
+</head>
+<body>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header class="game-header">
+      <div class="brand-title">
+        <span class="brand-icon">🍾</span>
+        <span>BOTTLE RACE</span>
+      </div>
+      <div class="header-actions">
+        <button id="btn-sound-toggle" class="icon-btn" title="Toggle Sound">
+          <span id="sound-icon">🔊</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ============================================================
+         SCREEN 1: HOME (JOIN / CREATE)
+    ============================================================ -->
+    <main id="screen-home" class="screen active">
+      <section class="hero-section">
+        <span class="hero-tag">Multiplayer Race</span>
+        <h1 class="hero-title">Color Bottle Match</h1>
+        <p class="hero-sub">Synchronized real-time color bottle puzzle challenge. Race friends head-to-head!</p>
+      </section>
+
+      <div class="card">
+        <div class="tabs-nav">
+          <button id="tab-join" class="tab-btn active">Join Room</button>
+          <button id="tab-create" class="tab-btn">Create Room</button>
+        </div>
+
+        <!-- Join Form -->
+        <div id="form-join">
+          <div class="form-group">
+            <label class="form-label" for="player-name">Your Player Name</label>
+            <input type="text" id="player-name" class="form-input" placeholder="e.g. Ahmed" maxlength="16" autocomplete="off" autofocus>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="room-code-input">5-Character Room Code</label>
+            <input type="text" id="room-code-input" class="form-input room-code-input" placeholder="CODE" maxlength="5" autocomplete="off">
+          </div>
+          <button id="btn-join-room" class="btn btn-primary">
+            <span>Enter Race Room</span> ➔
+          </button>
+        </div>
+
+        <!-- Create Form -->
+        <div id="form-create" style="display: none;">
+          <div class="form-group">
+            <label class="form-label" for="host-name">Host Name</label>
+            <input type="text" id="host-name" class="form-input" placeholder="e.g. Ishak" maxlength="16" autocomplete="off">
+          </div>
+          <button id="btn-create-room" class="btn btn-success">
+            <span>Create Race Room</span> ➔
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- ============================================================
+         SCREEN 2: LOBBY
+    ============================================================ -->
+    <main id="screen-lobby" class="screen">
+      <div class="card lobby-header">
+        <div class="room-code-badge-wrap">
+          <div class="room-code-info">
+            <span class="room-code-sub">Room Code</span>
+            <span id="lobby-room-code" class="room-code-text">-----</span>
+          </div>
+          <div class="room-actions">
+            <button id="btn-copy-code" class="icon-btn" title="Copy Invite Link">🔗 Share</button>
+            <button id="btn-show-qr" class="icon-btn" title="Show QR Code">📱 QR</button>
+            <button id="btn-leave-room" class="icon-btn btn-danger" title="Leave Room">✕ Leave</button>
+          </div>
+        </div>
+
+        <!-- Host Settings -->
+        <div id="host-settings-container">
+          <div class="settings-grid">
+            <div class="form-group">
+              <label class="form-label" for="select-difficulty">Puzzle Difficulty</label>
+              <select id="select-difficulty" class="select-input">
+                <option value="easy">Easy (6 Bottles)</option>
+                <option value="medium">Medium (8 Bottles)</option>
+                <option value="hard" selected>Hard (12 Bottles) ★</option>
+                <option value="expert">Expert (16 Bottles)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="select-max-players">Max Players</label>
+              <select id="select-max-players" class="select-input">
+                <option value="2">2 Players</option>
+                <option value="4">4 Players</option>
+                <option value="8" selected>8 Players</option>
+                <option value="16">16 Players</option>
+                <option value="32">32 Players</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="select-mode">Game Mode</label>
+              <select id="select-mode" class="select-input">
+                <option value="speed_match" selected>Speed Match (Color Targets)</option>
+                <option value="mystery_box">Mystery Box (Viral TikTok Swap)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Error Penalty</label>
+              <div class="toggle-switch-wrap">
+                <span style="font-size: 0.85rem; font-weight: 600;">Affect Finish Time</span>
+                <input type="checkbox" id="toggle-penalty" class="toggle-checkbox">
+              </div>
+            </div>
+          </div>
+
+          <div id="penalty-seconds-row" class="form-group" style="display: none;">
+            <label class="form-label" for="penalty-seconds">Penalty Seconds per Error</label>
+            <input type="number" id="penalty-seconds" class="form-input" value="2" min="0.5" max="10" step="0.5">
+          </div>
+        </div>
+      </div>
+
+      <!-- Competitors List -->
+      <div class="card">
+        <div class="player-list-header">
+          <div class="section-label">
+            <span>🏁 Competitors in Room</span>
+            <span id="lobby-player-count">(1/8)</span>
+          </div>
+        </div>
+        <div id="lobby-player-list" class="player-list"></div>
+      </div>
+
+      <!-- Host Start Button -->
+      <button id="btn-start-race" class="btn btn-success" style="font-size: 1.15rem; padding: 16px;">
+        <span>🚀 Start Synchronized Race</span>
+      </button>
+    </main>
+
+    <!-- ============================================================
+         SCREEN 3: RACE SCREEN
+    ============================================================ -->
+    <main id="screen-race" class="screen">
+      <!-- HUD Stats -->
+      <div class="race-hud">
+        <div class="hud-stat">
+          <div class="hud-stat-label">Matched</div>
+          <div id="stat-matched" class="hud-stat-val val-matched">0 / 12</div>
+        </div>
+        <div class="hud-stat">
+          <div class="hud-stat-label">Errors</div>
+          <div id="stat-errors" class="hud-stat-val val-errors">0</div>
+        </div>
+        <div class="hud-stat">
+          <div class="hud-stat-label">Time</div>
+          <div id="stat-time" class="hud-stat-val val-time">0.00s</div>
+        </div>
+      </div>
+
+      <!-- Live Competitors Track -->
+      <div class="competitors-tracker">
+        <div class="tracker-title">
+          <span>Live Rival Progress</span>
+          <span>Automatic Finish On 100%</span>
+        </div>
+        <div id="rival-list" class="rival-list"></div>
+      </div>
+
+      <!-- Playfield -->
+      <div class="playfield">
+        <!-- Target Shelf -->
+        <div class="shelf-container">
+          <div class="section-label" style="margin-bottom: 10px;">
+            <span id="shelf-title">🎯 Target Pattern</span>
+          </div>
+          <div id="shelf-slots" class="target-slots-grid"></div>
+        </div>
+
+        <!-- Mode Note -->
+        <div id="game-mode-note" style="font-size: 0.8rem; text-align: center; color: var(--text-secondary);">
+          Tap a bottle below, then tap its matching color slot above.
+        </div>
+
+        <!-- Player Bottle Dock -->
+        <div class="dock-container">
+          <div class="section-label" style="margin-bottom: 10px;">
+            <span>🍾 Your Bottles</span>
+          </div>
+          <div id="dock-bottles" class="bottles-grid"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ============================================================
+       OVERLAYS & MODALS
+  ============================================================ -->
+  <!-- Countdown Overlay -->
+  <div id="countdown-overlay" class="countdown-overlay">
+    <div id="countdown-number" class="countdown-number">3</div>
+    <div class="countdown-sub">GET READY TO RACE!</div>
+  </div>
+
+  <!-- Podium / Results Modal -->
+  <div id="podium-modal" class="podium-modal">
+    <div class="podium-card">
+      <div class="podium-header">
+        <div class="podium-trophy">🏆</div>
+        <h2 class="podium-title">Race Results</h2>
+        <div id="podium-rule-note" class="podium-rule-note">
+          Ranked by: 1. Completion  2. Finish Time  3. Errors as tiebreaker
+        </div>
+      </div>
+
+      <div class="ranking-table-wrap">
+        <table class="ranking-table">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Player</th>
+              <th>Time</th>
+              <th>Errors</th>
+              <th>Final Time</th>
+            </tr>
+          </thead>
+          <tbody id="ranking-tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="podium-actions">
+        <button id="btn-play-again" class="btn btn-success">🔄 Play Again</button>
+        <button id="btn-lobby-return" class="btn btn-outline">Lobby</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- QR Code Modal -->
+  <div id="qr-modal" class="qr-modal">
+    <div class="qr-card">
+      <h3 style="margin-bottom: 6px;">📱 Scan to Join Room</h3>
+      <p style="font-size: 0.85rem; color: var(--text-secondary);">Point your phone camera to join the race immediately</p>
+      <img id="qr-image" class="qr-img" alt="Room QR Code">
+      <p id="qr-url-text" style="font-size: 0.75rem; color: #38bdf8; word-break: break-all; margin-bottom: 16px;"></p>
+      <button id="btn-close-qr" class="btn btn-outline">Close</button>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/socket-client.js"></script>
+  <script>
+    // Sound Toggle Handler
+    const soundBtn = document.getElementById('btn-sound-toggle');
+    const soundIcon = document.getElementById('sound-icon');
+    let soundMuted = false;
+    soundBtn?.addEventListener('click', () => {
+      soundMuted = !soundMuted;
+      if (window.sounds) window.sounds.enabled = !soundMuted;
+      soundIcon.textContent = soundMuted ? '🔇' : '🔊';
+    });
+  </script>
+</body>
+</html>
