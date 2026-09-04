@@ -28,7 +28,11 @@ const COLOR_PALETTE = [
 const DIFFICULTY_MAP = {
   easy: 5,
   medium: 8,
+  10: 10,
+  bottles10: 10,
   hard: 12,
+  14: 14,
+  bottles14: 14,
   expert: 16
 };
 

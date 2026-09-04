@@ -309,7 +309,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, '0.0.0.0', () => {
   const localIP = getLocalNetworkIP();
   console.log(`\n======================================================`);
-  console.log(`  COLOR BOTTLE MATCHING GAME - MULTIPLAYER SERVER`);
+  console.log(`  ISHAK's BOTTLE RACE - MULTIPLAYER SERVER`);
   console.log(`======================================================`);
   console.log(`  Local URL:   http://localhost:${PORT}`);
   console.log(`  Network URL: http://${localIP}:${PORT}`);

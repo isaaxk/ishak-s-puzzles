@@ -1,4 +1,4 @@
-# 🍾 Color Bottle Matching Game — Multiplayer Race
+# 🍾 ISHAK's BOTTLE RACE — Multiplayer Matching Game
 
 A mobile-friendly real-time multiplayer web app inspired by the viral Color Bottle Matching Game. Compete head-to-head in synchronized race rooms, track competitors live, and finish automatically as soon as the final bottle is matched!
 
@@ -8,7 +8,7 @@ A mobile-friendly real-time multiplayer web app inspired by the viral Color Bott
 
 - **🏁 Race Room & Host Settings**:
   - 5-character room code with shareable invite links and instant QR code for mobile joining.
-  - Host controls: Select difficulty (Easy 6, Medium 8, Hard 12, Expert 16 bottles), set max players, kick players, and start the synchronized race.
+  - Host controls: Select difficulty (Easy 5, Medium 8, Pro 10, Hard 12, Expert 14, Master 16 bottles), set max players, kick players, and start the synchronized race.
   - Any player can join or leave at any time; host privileges transfer automatically if the host leaves.
 - **🎮 Synchronized Real-Time Race**:
   - All competitors receive the exact same puzzle sequence and start at the same moment after a 3-2-1-GO! countdown.

@@ -1,7 +1,7 @@
 {
   "name": "color-bottle-race",
   "version": "1.0.0",
-  "description": "Real-time Multiplayer Color Bottle Matching Race Game",
+  "description": "ISHAK's BOTTLE RACE — Real-time Multiplayer Color Bottle Matching Race Game",
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",
