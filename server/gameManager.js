@@ -3,6 +3,8 @@
  * In-memory room and race state manager
  */
 
+const fs = require('fs');
+const path = require('path');
 const { rankPlayers, calculateFinalTime } = require('./ranking');
 
 // Curated high-contrast bottle color palette
@@ -37,10 +39,153 @@ const DIFFICULTY_MAP = {
 };
 
 class GameManager {
-  constructor() {
+  constructor(options = {}) {
     this.rooms = new Map(); // roomCode -> roomData
     this.socketToRoom = new Map(); // socketId -> roomCode
     this.disconnectTimers = new Map(); // token -> timeout
+    this.persist = options.persist !== undefined ? options.persist : (process.env.NODE_ENV !== 'test');
+    this.dataDir = options.dataDir || path.join(__dirname, '..', 'data');
+    this.dataFile = path.join(this.dataDir, 'rooms.json');
+
+    if (this.persist) {
+      this.ensureDataDir();
+      this.loadFromDisk();
+    }
+
+    // Sweep expired rooms periodically (rooms older than 2 hours with 0 connected players)
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupExpiredRooms();
+    }, 10 * 60 * 1000);
+    if (this.cleanupInterval && typeof this.cleanupInterval.unref === 'function') {
+      this.cleanupInterval.unref();
+    }
+  }
+
+  ensureDataDir() {
+    if (!this.persist) return;
+    try {
+      if (!fs.existsSync(this.dataDir)) {
+        fs.mkdirSync(this.dataDir, { recursive: true });
+      }
+    } catch (err) {
+      console.error('[GameManager] Failed to create data dir:', err.message);
+    }
+  }
+
+  saveToDisk() {
+    if (!this.persist) return;
+    try {
+      this.ensureDataDir();
+      const serializableRooms = [];
+      const now = Date.now();
+      const MAX_AGE = 2 * 60 * 60 * 1000; // 2 hours
+
+      for (const [code, room] of this.rooms.entries()) {
+        if (room.createdAt && (now - room.createdAt > MAX_AGE)) continue;
+
+        const players = Array.from(room.players.values()).map(p => ({
+          id: p.id,
+          token: p.token,
+          name: p.name,
+          isHost: p.isHost,
+          connected: p.connected,
+          ready: p.ready,
+          completed: p.completed,
+          isWaiting: p.isWaiting,
+          surrendered: p.surrendered,
+          finishTime: p.finishTime,
+          finalTime: p.finalTime,
+          errors: p.errors,
+          matched: p.matched,
+          total: p.total,
+          rank: p.rank
+        }));
+
+        serializableRooms.push({
+          code: room.code,
+          hostId: room.hostId,
+          state: room.state,
+          settings: room.settings,
+          players,
+          puzzle: room.puzzle,
+          startTime: room.startTime,
+          countdownStartTime: room.countdownStartTime,
+          createdAt: room.createdAt || now
+        });
+      }
+
+      fs.writeFileSync(this.dataFile, JSON.stringify(serializableRooms, null, 2), 'utf8');
+    } catch (err) {
+      console.error('[GameManager] saveToDisk error:', err.message);
+    }
+  }
+
+  loadFromDisk() {
+    if (!this.persist) return;
+    try {
+      if (!fs.existsSync(this.dataFile)) return;
+      const raw = fs.readFileSync(this.dataFile, 'utf8');
+      if (!raw || !raw.trim()) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+
+      const now = Date.now();
+      const MAX_AGE = 2 * 60 * 60 * 1000; // 2 hours
+
+      for (const r of parsed) {
+        if (!r.code || !r.players) continue;
+        if (r.createdAt && (now - r.createdAt > MAX_AGE)) continue;
+
+        const playersMap = new Map();
+        for (const p of r.players) {
+          const restoredPlayer = {
+            ...p,
+            connected: false
+          };
+          playersMap.set(p.id, restoredPlayer);
+        }
+
+        const restoredRoom = {
+          code: r.code,
+          hostId: r.hostId,
+          state: r.state,
+          settings: r.settings,
+          players: playersMap,
+          puzzle: r.puzzle,
+          startTime: r.startTime,
+          countdownStartTime: r.countdownStartTime,
+          createdAt: r.createdAt || now
+        };
+
+        this.rooms.set(r.code, restoredRoom);
+      }
+      console.log(`[GameManager] Loaded ${this.rooms.size} active room(s) from disk.`);
+    } catch (err) {
+      console.error('[GameManager] loadFromDisk error:', err.message);
+    }
+  }
+
+  cleanupExpiredRooms() {
+    const now = Date.now();
+    const MAX_AGE = 2 * 60 * 60 * 1000; // 2 hours
+    let changed = false;
+
+    for (const [code, room] of this.rooms.entries()) {
+      const roomAge = now - (room.createdAt || 0);
+      const hasConnectedPlayers = Array.from(room.players.values()).some(p => p.connected);
+      if (roomAge > MAX_AGE && !hasConnectedPlayers) {
+        for (const p of room.players.values()) {
+          this.clearDisconnectTimer(p.token);
+          this.socketToRoom.delete(p.id);
+        }
+        this.rooms.delete(code);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this.saveToDisk();
+    }
   }
 
   generateRoomCode() {
@@ -99,6 +244,7 @@ class GameManager {
 
     this.rooms.set(code, room);
     this.socketToRoom.set(hostSocketId, code);
+    this.saveToDisk();
 
     return room;
   }
@@ -143,6 +289,12 @@ class GameManager {
       room.players.set(socketId, existingPlayer);
       this.socketToRoom.set(socketId, code);
 
+      if (existingPlayer.isHost) {
+        room.hostId = socketId;
+      }
+
+      this.saveToDisk();
+
       return { room, player: existingPlayer, reconnected: true, isWaiting: Boolean(existingPlayer.isWaiting) };
     }
 
@@ -181,6 +333,7 @@ class GameManager {
 
     room.players.set(socketId, player);
     this.socketToRoom.set(socketId, code);
+    this.saveToDisk();
 
     return { room, player, reconnected: false, isWaiting: isMidRace };
   }
@@ -212,10 +365,16 @@ class GameManager {
     player.connected = true;
     this.socketToRoom.set(socketId, code);
 
+    if (player.isHost) {
+      room.hostId = socketId;
+    }
+
+    this.saveToDisk();
+
     return { success: true, room, player };
   }
 
-  handleDisconnect(socketId, onTimeout) {
+  handleDisconnect(socketId, onTimeout, customGraceMs) {
     const code = this.socketToRoom.get(socketId);
     if (!code) return null;
     const room = this.rooms.get(code);
@@ -228,18 +387,32 @@ class GameManager {
     player.connected = false;
     this.clearDisconnectTimer(player.token);
 
-    // Start 60s grace period timer
+    const isLobby = room.state === 'LOBBY';
+    // Default: 30 minutes in lobby, 5 minutes in race, or customGraceMs if provided
+    const graceMs = customGraceMs !== undefined ? customGraceMs : (isLobby ? 30 * 60 * 1000 : 5 * 60 * 1000);
+
     const timerId = setTimeout(() => {
       this.disconnectTimers.delete(player.token);
       if (!player.connected) {
+        // If room is in LOBBY and player is the host (or only player in room),
+        // and room is less than 2 hours old, DO NOT delete room or evict host!
+        // This keeps the room open for friends joining while host is away.
+        if (room.state === 'LOBBY' && room.players.size <= 1) {
+          const roomAge = Date.now() - (room.createdAt || 0);
+          if (roomAge < 2 * 60 * 60 * 1000) {
+            return;
+          }
+        }
+
         const leaveRes = this.explicitLeaveRoom(player.id);
         if (leaveRes && typeof onTimeout === 'function') {
           onTimeout(leaveRes);
         }
       }
-    }, 60000);
+    }, graceMs);
 
     this.disconnectTimers.set(player.token, timerId);
+    this.saveToDisk();
 
     return { room, player };
   }
@@ -269,6 +442,7 @@ class GameManager {
     // If room is empty, delete room
     if (room.players.size === 0) {
       this.rooms.delete(code);
+      this.saveToDisk();
       return { roomDeleted: true, code, player };
     }
 
@@ -291,6 +465,7 @@ class GameManager {
       }
     }
 
+    this.saveToDisk();
     return { room, player, newHostId, roomDeleted: false };
   }
 
@@ -310,6 +485,7 @@ class GameManager {
     this.clearDisconnectTimer(target.token);
     room.players.delete(targetPlayerId);
     this.socketToRoom.delete(targetPlayerId);
+    this.saveToDisk();
 
     return { success: true, kickedPlayer: target };
   }
@@ -348,6 +524,7 @@ class GameManager {
       room.settings.gameplayMode = newSettings.gameplayMode === 'mystery_box' ? 'mystery_box' : 'speed_match';
     }
 
+    this.saveToDisk();
     return { success: true, room };
   }
 
@@ -427,6 +604,7 @@ class GameManager {
     room.countdownStartTime = Date.now();
     // 3 seconds countdown
     room.startTime = room.countdownStartTime + 3000;
+    this.saveToDisk();
 
     return { success: true, room };
   }
@@ -516,6 +694,7 @@ class GameManager {
 
     // Evaluate finish condition based on room raceMode
     const allCompleted = this.checkRaceFinished(room);
+    this.saveToDisk();
 
     return {
       player,
@@ -546,6 +725,7 @@ class GameManager {
 
     // Check if surrender causes race to finish (e.g. Mode 3 when all remaining surrendered)
     const allCompleted = this.checkRaceFinished(room);
+    this.saveToDisk();
 
     return {
       player,
@@ -577,6 +757,8 @@ class GameManager {
       }
     }
 
+    this.saveToDisk();
+
     return {
       success: true,
       room,
@@ -604,6 +786,8 @@ class GameManager {
       p.matched = 0;
       p.rank = null;
     }
+
+    this.saveToDisk();
 
     return { success: true, room };
   }

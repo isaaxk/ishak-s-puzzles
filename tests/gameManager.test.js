@@ -1,5 +1,8 @@
+process.env.NODE_ENV = 'test';
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
 const { GameManager, DIFFICULTY_MAP } = require('../server/gameManager');
 
 describe('GameManager Tests', () => {
@@ -281,6 +284,76 @@ describe('GameManager Tests', () => {
     assert.equal(room.state, 'FINISHED');
     assert.ok(hostEnd.rankings);
     assert.equal(hostEnd.rankings.length, 3);
+  });
+
+  test('Host switches to Instagram in lobby: room remains open, friends can join, and host reconnects as host', async () => {
+    const gm = new GameManager({ persist: false });
+    const hostToken = 'token-host-ig';
+    const room = gm.createRoom('socket-host-1', 'IshakHost', { difficulty: 'hard' }, hostToken);
+    const roomCode = room.code;
+
+    // Host minimizes browser to go to Instagram (simulating background disconnect with a small custom grace ms)
+    const dcRes = gm.handleDisconnect('socket-host-1', null, 50); // 50ms grace for test
+    assert.ok(dcRes);
+    assert.equal(dcRes.player.connected, false);
+
+    // Wait 100ms so the disconnect timer has fired
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // CRITICAL: Verify room was NOT deleted even though grace period expired while host was in Instagram!
+    const roomAfterAway = gm.getRoom(roomCode);
+    assert.ok(roomAfterAway, 'Room must still exist while host is on Instagram');
+    assert.equal(roomAfterAway.players.size, 1);
+
+    // Friend joins room using the code while host is away
+    const friendToken = 'token-friend-1';
+    const joinFriend = gm.joinRoom(roomCode, 'socket-friend-1', 'Karim', friendToken);
+    assert.ok(joinFriend.room, 'Friend should successfully join');
+    assert.equal(joinFriend.error, undefined);
+    assert.equal(roomAfterAway.players.size, 2);
+
+    // Host returns from Instagram and reconnects via token
+    const recRes = gm.reconnectPlayer(roomCode, 'socket-host-2', hostToken);
+    assert.ok(recRes.success, 'Host should reconnect successfully');
+    assert.equal(recRes.player.id, 'socket-host-2');
+    assert.equal(recRes.player.isHost, true);
+    assert.equal(recRes.room.hostId, 'socket-host-2', 'Host ID must be updated to new socket ID');
+
+    // Host can now start the race
+    const startRes = gm.startCountdown(roomCode, 'socket-host-2');
+    assert.equal(startRes.success, true);
+    assert.equal(roomAfterAway.state, 'COUNTDOWN');
+
+    // Clean up
+    gm.clearDisconnectTimer(hostToken);
+    gm.clearDisconnectTimer(friendToken);
+  });
+
+  test('Disk persistence reloads active rooms across server restarts', () => {
+    const tmpDir = path.join(__dirname, 'tmp_data_' + Date.now());
+    const gm1 = new GameManager({ persist: true, dataDir: tmpDir });
+    const room = gm1.createRoom('socket-orig-host', 'PersistedHost', { difficulty: 'medium' }, 'token-persist-host');
+    const roomCode = room.code;
+    gm1.joinRoom(roomCode, 'socket-p2', 'PersistedPlayer2', 'token-persist-p2');
+
+    // Simulate server restart by creating a new GameManager pointing to the same dataDir
+    const gm2 = new GameManager({ persist: true, dataDir: tmpDir });
+    const loadedRoom = gm2.getRoom(roomCode);
+    assert.ok(loadedRoom, 'Room must be reloaded from disk');
+    assert.equal(loadedRoom.code, roomCode);
+    assert.equal(loadedRoom.settings.difficulty, 'medium');
+    assert.equal(loadedRoom.players.size, 2);
+
+    // Host reconnects after server reboot
+    const recRes = gm2.reconnectPlayer(roomCode, 'socket-reboot-host', 'token-persist-host');
+    assert.ok(recRes.success);
+    assert.equal(recRes.player.isHost, true);
+    assert.equal(loadedRoom.hostId, 'socket-reboot-host');
+
+    // Clean up tmp dir
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch (e) {}
   });
 
 });

@@ -23,11 +23,24 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3050;
-const gameManager = new GameManager();
+const gameManager = new GameManager({ persist: true });
 
 // Serve static assets
 app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use(express.json());
+
+// Health and keep-alive endpoints
+app.get('/api/ping', (req, res) => {
+  res.json({
+    status: 'ok',
+    rooms: gameManager.rooms.size,
+    timestamp: Date.now()
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.send('OK');
+});
 
 // Helper to get local network IP address
 function getLocalNetworkIP() {
@@ -418,4 +431,29 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`  Local URL:   http://localhost:${PORT}`);
   console.log(`  Network URL: http://${localIP}:${PORT}`);
   console.log(`======================================================\n`);
+
+  // Render keep-alive mechanism to prevent free tier sleeping
+  const renderExternalUrl = process.env.RENDER_EXTERNAL_URL;
+  if (renderExternalUrl) {
+    console.log(`[KeepAlive] Scheduled for ${renderExternalUrl}`);
+    setInterval(() => {
+      try {
+        const pingUrl = `${renderExternalUrl}/api/ping`;
+        const client = pingUrl.startsWith('https') ? require('https') : require('http');
+        client.get(pingUrl, (res) => {
+          res.on('data', () => {});
+        }).on('error', () => {});
+      } catch (e) {}
+    }, 10 * 60 * 1000); // Every 10 minutes
+  }
+});
+
+process.on('SIGTERM', () => {
+  gameManager.saveToDisk();
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  gameManager.saveToDisk();
+  process.exit(0);
 });

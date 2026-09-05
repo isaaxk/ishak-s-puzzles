@@ -261,14 +261,22 @@
     });
   });
 
+  // Helper to determine if current client is the room host
+  function isCurrentPlayerHost() {
+    if (!currentRoom) return false;
+    if (myPlayerId && currentRoom.hostId === myPlayerId) return true;
+    const me = currentRoom.players?.find(p => (myPlayerId && p.id === myPlayerId) || (myPlayerToken && p.token === myPlayerToken));
+    return Boolean(me?.isHost);
+  }
+
   // Setup Lobby View
   function setupLobby() {
     if (!currentRoom) return;
     lobbyRoomCodeText.textContent = currentRoom.code;
-    isHost = currentRoom.hostId === myPlayerId;
+    isHost = isCurrentPlayerHost();
 
     // Check if the current user is waiting for the active race to finish
-    const myP = currentRoom.players?.find(p => p.id === myPlayerId || p.token === myPlayerToken);
+    const myP = currentRoom.players?.find(p => (myPlayerId && p.id === myPlayerId) || (myPlayerToken && p.token === myPlayerToken));
     const amWaiting = Boolean(myP?.isWaiting);
     if (waitingBannerEl) {
       waitingBannerEl.style.display = amWaiting ? 'flex' : 'none';
@@ -305,8 +313,8 @@
     playerCountEl.textContent = `(${players.length}/${currentRoom.settings.maxPlayers})`;
 
     players.forEach(p => {
-      const isMe = p.id === myPlayerId;
-      const isRoomHost = p.id === currentRoom.hostId;
+      const isMe = (myPlayerId && p.id === myPlayerId) || (myPlayerToken && p.token === myPlayerToken);
+      const isRoomHost = p.id === currentRoom.hostId || p.isHost === true;
       const isAway = p.connected === false;
       const isWaiting = p.isWaiting === true;
 
@@ -347,9 +355,9 @@
   socket.on('room_update', (roomSummary) => {
     const prevWaiting = wasIWaiting;
     currentRoom = roomSummary;
-    isHost = roomSummary.hostId === myPlayerId;
+    isHost = isCurrentPlayerHost();
 
-    const myP = currentRoom.players?.find(p => p.id === myPlayerId || p.token === myPlayerToken);
+    const myP = currentRoom.players?.find(p => (myPlayerId && p.id === myPlayerId) || (myPlayerToken && p.token === myPlayerToken));
     wasIWaiting = Boolean(myP?.isWaiting);
 
     // If I was waiting and the race finished, notify that I am now directly part of the room!
@@ -710,19 +718,27 @@
   // Session Reconnection for Mobile App Switching
   // ==========================================
   let isReconnecting = false;
+  let reconnectAttempts = 0;
+
   function tryReconnect() {
     const savedRoomCode = sessionStorage.getItem('bottle_race_room');
     if (!savedRoomCode || !myPlayerToken || isReconnecting) return;
+
+    if (!socket.connected) {
+      socket.connect();
+      return;
+    }
 
     isReconnecting = true;
     socket.emit('reconnect_session', { roomCode: savedRoomCode, token: myPlayerToken }, (res) => {
       isReconnecting = false;
       if (res && res.success) {
+        reconnectAttempts = 0;
         myPlayerId = res.playerId;
         currentRoom = res.room;
-        isHost = res.room.hostId === myPlayerId;
+        isHost = isCurrentPlayerHost();
 
-        const myP = res.room.players?.find(p => p.id === res.playerId || p.token === myPlayerToken);
+        const myP = res.room.players?.find(p => (res.playerId && p.id === res.playerId) || (myPlayerToken && p.token === myPlayerToken));
         const amWaiting = Boolean(myP?.isWaiting || res.isWaiting);
 
         if (res.room.state === 'LOBBY' || amWaiting) {
@@ -773,12 +789,19 @@
         }
         showToast('Connected back to room! 🔄');
       } else if (res && res.error) {
-        // Room no longer exists or grace period expired
-        sessionStorage.removeItem('bottle_race_room');
+        reconnectAttempts++;
+        if (reconnectAttempts >= 3 || res.error.includes('not found')) {
+          sessionStorage.removeItem('bottle_race_room');
+          reconnectAttempts = 0;
+          showToast(res.error, 4000);
+        } else {
+          setTimeout(tryReconnect, 1500);
+        }
       }
     });
   }
 
+  // App switch & mobile wake listeners
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       tryReconnect();
@@ -786,6 +809,10 @@
   });
 
   window.addEventListener('focus', () => {
+    tryReconnect();
+  });
+
+  window.addEventListener('pageshow', () => {
     tryReconnect();
   });
 
