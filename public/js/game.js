@@ -10,6 +10,19 @@
  * - Automatic finish as soon as Matched === N.
  */
 
+function formatTimeDisplay(seconds) {
+  if (seconds === null || seconds === undefined || isNaN(seconds)) return '0.00s';
+  const s = Number(seconds);
+  if (s < 60) {
+    return `${s.toFixed(2)}s`;
+  }
+  const mins = Math.floor(s / 60);
+  const remSec = s - (mins * 60);
+  const secStr = remSec < 10 ? `0${remSec.toFixed(2)}` : remSec.toFixed(2);
+  return `${mins}:${secStr}`;
+}
+window.formatTimeDisplay = formatTimeDisplay;
+
 class ColorBottleGame {
   constructor(options = {}) {
     this.onProgress = options.onProgress || (() => {});
@@ -36,10 +49,16 @@ class ColorBottleGame {
     this.selectedTapIndex = null;
     this.touchGhostEl = null;
 
-    // DOM Elements
+    // DOM Elements - Top Bar HUD
     this.matchedDisplay = document.getElementById('stat-matched');
     this.errorsDisplay = document.getElementById('stat-errors');
     this.timeDisplay = document.getElementById('stat-time');
+
+    // DOM Elements - 3 Quick-view Side Bubbles
+    this.bubbleMatchedDisplay = document.getElementById('bubble-stat-matched');
+    this.bubbleErrorsDisplay = document.getElementById('bubble-stat-errors');
+    this.bubbleTimeDisplay = document.getElementById('bubble-stat-time');
+
     this.shelfSlotsEl = document.getElementById('shelf-slots');
   }
 
@@ -66,6 +85,9 @@ class ColorBottleGame {
     // Initial matches calculation
     this.matchedCount = this.calculateMatches();
 
+    if (this.timeDisplay) this.timeDisplay.textContent = '0.00s';
+    if (this.bubbleTimeDisplay) this.bubbleTimeDisplay.textContent = '0.00s';
+
     this.updateHUD();
     this.render();
   }
@@ -82,8 +104,13 @@ class ColorBottleGame {
 
     const now = performance.now();
     const elapsedSeconds = (now - this.timerStartTime) / 1000;
+    const formattedTime = formatTimeDisplay(elapsedSeconds);
+
     if (this.timeDisplay) {
-      this.timeDisplay.textContent = `${elapsedSeconds.toFixed(2)}s`;
+      this.timeDisplay.textContent = formattedTime;
+    }
+    if (this.bubbleTimeDisplay) {
+      this.bubbleTimeDisplay.textContent = formattedTime;
     }
 
     this.timerAnimationId = requestAnimationFrame(() => this.runTimer());
@@ -107,11 +134,21 @@ class ColorBottleGame {
   }
 
   updateHUD() {
+    const matchedText = `${this.matchedCount} / ${this.bottleCount}`;
+    const errorsText = `${this.errorsCount}`;
+
     if (this.matchedDisplay) {
-      this.matchedDisplay.textContent = `${this.matchedCount} / ${this.bottleCount}`;
+      this.matchedDisplay.textContent = matchedText;
     }
     if (this.errorsDisplay) {
-      this.errorsDisplay.textContent = `${this.errorsCount}`;
+      this.errorsDisplay.textContent = errorsText;
+    }
+
+    if (this.bubbleMatchedDisplay) {
+      this.bubbleMatchedDisplay.textContent = `${this.matchedCount}/${this.bottleCount}`;
+    }
+    if (this.bubbleErrorsDisplay) {
+      this.bubbleErrorsDisplay.textContent = errorsText;
     }
   }
 
@@ -191,9 +228,13 @@ class ColorBottleGame {
 
     const elapsed = (performance.now() - this.timerStartTime) / 1000;
     this.finishTime = Number(elapsed.toFixed(2));
+    const formatted = formatTimeDisplay(this.finishTime);
 
     if (this.timeDisplay) {
-      this.timeDisplay.textContent = `${this.finishTime.toFixed(2)}s`;
+      this.timeDisplay.textContent = formatted;
+    }
+    if (this.bubbleTimeDisplay) {
+      this.bubbleTimeDisplay.textContent = formatted;
     }
 
     window.sounds?.playVictoryFanfare();

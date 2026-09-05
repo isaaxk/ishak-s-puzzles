@@ -148,7 +148,16 @@
          SCREEN 3: RACE SCREEN
     ============================================================ -->
     <main id="screen-race" class="screen">
-      <!-- HUD Stats -->
+      <!-- 1. Leaderboard / Rival Tracker on Top -->
+      <div class="competitors-tracker">
+        <div class="tracker-title">
+          <span>🏆 Live Leaderboard</span>
+          <span>Automatic Finish On 100%</span>
+        </div>
+        <div id="rival-list" class="rival-list"></div>
+      </div>
+
+      <!-- 2. HUD Stats Bar Under Leaderboard -->
       <div class="race-hud">
         <div class="hud-stat">
           <div class="hud-stat-label">Matched</div>
@@ -164,23 +173,41 @@
         </div>
       </div>
 
-      <!-- Live Competitors Track -->
-      <div class="competitors-tracker">
-        <div class="tracker-title">
-          <span>Live Rival Progress</span>
-          <span>Automatic Finish On 100%</span>
-        </div>
-        <div id="rival-list" class="rival-list"></div>
-      </div>
-
-      <!-- Playfield: Single Scrambled Bottle Shelf with Drag & Drop -->
+      <!-- 3. Playfield: Single Scrambled Bottle Shelf with 3 Side Bubbles on the Right -->
       <div class="playfield">
-        <div class="shelf-container">
-          <div class="shelf-header">
-            <span class="shelf-title">🍾 Bottle Shelf</span>
-            <span class="shelf-hint">Drag onto another bottle to swap</span>
+        <div class="shelf-and-bubbles-wrap">
+          <div class="shelf-container">
+            <div class="shelf-header">
+              <span class="shelf-title">🍾 Bottle Shelf</span>
+              <span class="shelf-hint">Drag onto another bottle to swap</span>
+            </div>
+            <div id="shelf-slots" class="bottle-slots-grid"></div>
           </div>
-          <div id="shelf-slots" class="bottle-slots-grid"></div>
+
+          <!-- 3 Quick-View Bubbles to the right of the bottles -->
+          <aside class="side-stat-bubbles" aria-label="Live Game Stats">
+            <div class="side-bubble bubble-matched" title="Matched Bottles">
+              <span class="bubble-icon">🎯</span>
+              <div class="bubble-info">
+                <span class="bubble-label">MATCH</span>
+                <span id="bubble-stat-matched" class="bubble-val">0/12</span>
+              </div>
+            </div>
+            <div class="side-bubble bubble-errors" title="Errors">
+              <span class="bubble-icon">⚠️</span>
+              <div class="bubble-info">
+                <span class="bubble-label">ERRORS</span>
+                <span id="bubble-stat-errors" class="bubble-val">0</span>
+              </div>
+            </div>
+            <div class="side-bubble bubble-time" title="Elapsed Time">
+              <span class="bubble-icon">⏱️</span>
+              <div class="bubble-info">
+                <span class="bubble-label">TIME</span>
+                <span id="bubble-stat-time" class="bubble-val">0.00s</span>
+              </div>
+            </div>
+          </aside>
         </div>
 
         <div class="drag-instructions">

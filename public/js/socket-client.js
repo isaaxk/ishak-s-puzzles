@@ -376,7 +376,8 @@
 
   // Competitor finish announcement
   socket.on('player_finished', (data) => {
-    showToast(`🏁 ${data.player.name} finished in ${data.player.finishTime.toFixed(2)}s!`);
+    const formattedFinish = window.formatTimeDisplay ? window.formatTimeDisplay(data.player.finishTime) : `${data.player.finishTime.toFixed(2)}s`;
+    showToast(`🏁 ${data.player.name} finished in ${formattedFinish}!`);
     updateRivalTracks();
     if (data.rankings) {
       displayPodium(data.rankings, currentRoom?.settings);
@@ -466,9 +467,13 @@
       else if (p.rank === 2) medal = '🥈 2nd';
       else if (p.rank === 3) medal = '🥉 3rd';
 
-      const timeText = p.completed && p.finishTime !== null ? `${p.finishTime.toFixed(2)}s` : `${p.matched}/${p.total}`;
+      const timeText = p.completed && p.finishTime !== null
+        ? (window.formatTimeDisplay ? window.formatTimeDisplay(p.finishTime) : `${p.finishTime.toFixed(2)}s`)
+        : `${p.matched}/${p.total}`;
       const penaltyText = penaltyEnabled ? (p.errors > 0 ? `+${(p.errors * penaltyPerError).toFixed(1)}s` : '0.0s') : '-';
-      const finalTimeText = p.completed && p.finalTime !== null ? `${p.finalTime.toFixed(2)}s` : 'DNF';
+      const finalTimeText = p.completed && p.finalTime !== null
+        ? (window.formatTimeDisplay ? window.formatTimeDisplay(p.finalTime) : `${p.finalTime.toFixed(2)}s`)
+        : 'DNF';
 
       row.innerHTML = `
         <td class="rank-cell rank-${p.rank}">${medal}</td>
