@@ -836,34 +836,28 @@ body {
   .shelf-and-bubbles-wrap {
     gap: 8px;
   }
+  .shelf-container {
+    padding: 16px 8px 20px;
+  }
   .side-bubble {
-    min-width: 58px;
-    padding: 7px 5px;
+    min-width: 54px;
+    padding: 7px 4px;
     border-radius: 12px;
   }
   .bubble-icon {
-    font-size: 1.05rem;
+    font-size: 1rem;
   }
   .bubble-label {
-    font-size: 0.52rem;
+    font-size: 0.5rem;
   }
   .bubble-val {
-    font-size: 0.78rem;
+    font-size: 0.75rem;
   }
 }
 
-/* Shelf ledge line */
+/* Shelf ledge line on container disabled in favor of per-row ledges */
 .shelf-container::after {
-  content: '';
-  position: absolute;
-  bottom: 16px;
-  left: 12px;
-  right: 12px;
-  height: 6px;
-  background: linear-gradient(to right, #334155, #64748b, #334155);
-  border-radius: 3px;
-  box-shadow: 0 3px 6px rgba(0,0,0,0.5);
-  pointer-events: none;
+  display: none;
 }
 
 .shelf-header {
@@ -889,12 +883,37 @@ body {
 
 .bottle-slots-grid {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px 10px;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding-bottom: 4px;
+  min-height: 120px;
+}
+
+.bottle-shelf-row {
+  display: flex;
   justify-content: center;
   align-items: flex-end;
-  padding-bottom: 10px;
-  min-height: 120px;
+  gap: 10px;
+  width: 100%;
+  position: relative;
+  padding-bottom: 12px;
+}
+
+/* Authentic wooden/metallic ledge line under each row */
+.bottle-shelf-row::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 6px;
+  right: 6px;
+  height: 5px;
+  background: linear-gradient(to right, rgba(51, 65, 85, 0.4), #64748b, #94a3b8, #64748b, rgba(51, 65, 85, 0.4));
+  border-radius: 3px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
 }
 
 .bottle-slot {
@@ -903,7 +922,7 @@ body {
   align-items: center;
   gap: 6px;
   position: relative;
-  padding: 6px;
+  padding: 4px 6px;
   border-radius: 14px;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -962,8 +981,8 @@ body {
    REALISTIC GLASS BOTTLE COMPONENT
 ============================================================ */
 .bottle-wrapper {
-  width: 50px;
-  height: 94px;
+  width: 48px;
+  height: 90px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1024,8 +1043,8 @@ body {
 
 /* Bottle Body */
 .bottle-body {
-  width: 44px;
-  height: 68px;
+  width: 42px;
+  height: 64px;
   border-radius: 6px 6px 12px 12px;
   background: rgba(255, 255, 255, 0.12);
   border: 2px solid rgba(255, 255, 255, 0.45);
@@ -1304,4 +1323,60 @@ body {
 @keyframes toastSlide {
   from { opacity: 0; transform: translateY(15px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Responsive bottle row sizing for mobile screens */
+@media (max-width: 480px) {
+  .bottle-shelf-row {
+    gap: 8px;
+    padding-bottom: 10px;
+  }
+  .bottle-wrapper {
+    width: 44px;
+    height: 82px;
+  }
+  .bottle-body {
+    width: 38px;
+    height: 58px;
+  }
+  .bottle-neck {
+    width: 14px;
+    height: 12px;
+  }
+  .bottle-cork {
+    width: 12px;
+    height: 7px;
+  }
+  .bottle-slot {
+    padding: 3px;
+  }
+  .slot-index {
+    font-size: 0.65rem;
+    padding: 1px 4px;
+  }
+}
+
+@media (max-width: 375px) {
+  .bottle-shelf-row {
+    gap: 5px;
+  }
+  .bottle-wrapper {
+    width: 38px;
+    height: 74px;
+  }
+  .bottle-body {
+    width: 33px;
+    height: 52px;
+  }
+  .bottle-neck {
+    width: 12px;
+    height: 10px;
+  }
+  .bottle-cork {
+    width: 10px;
+    height: 6px;
+  }
+  .bottle-slot {
+    padding: 2px;
+  }
 }

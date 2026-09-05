@@ -253,169 +253,182 @@ class ColorBottleGame {
     if (!this.shelfSlotsEl || !this.currentBottles) return;
     this.shelfSlotsEl.innerHTML = '';
 
-    for (let i = 0; i < this.bottleCount; i++) {
-      const bottle = this.currentBottles[i];
-      const slotEl = document.createElement('div');
-      slotEl.className = 'bottle-slot';
-      slotEl.dataset.index = i;
+    const BOTTLES_PER_ROW = 4;
+    const rowCount = Math.ceil(this.bottleCount / BOTTLES_PER_ROW);
 
-      const isSelected = this.selectedTapIndex === i;
+    for (let r = 0; r < rowCount; r++) {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'bottle-shelf-row';
 
-      slotEl.innerHTML = `
-        <div class="bottle-wrapper ${isSelected ? 'selected' : ''}" draggable="true" data-index="${i}" style="--bottle-color: ${bottle.hex}">
-          <div class="bottle-cork"></div>
-          <div class="bottle-neck"></div>
-          <div class="bottle-body">
-            <div class="bottle-liquid" style="background: linear-gradient(180deg, ${bottle.secondary} 0%, ${bottle.hex} 100%);">
-              <div class="liquid-wave"></div>
+      const startIndex = r * BOTTLES_PER_ROW;
+      const endIndex = Math.min(startIndex + BOTTLES_PER_ROW, this.bottleCount);
+
+      for (let i = startIndex; i < endIndex; i++) {
+        const bottle = this.currentBottles[i];
+        const slotEl = document.createElement('div');
+        slotEl.className = 'bottle-slot';
+        slotEl.dataset.index = i;
+
+        const isSelected = this.selectedTapIndex === i;
+
+        slotEl.innerHTML = `
+          <div class="bottle-wrapper ${isSelected ? 'selected' : ''}" draggable="true" data-index="${i}" style="--bottle-color: ${bottle.hex}">
+            <div class="bottle-cork"></div>
+            <div class="bottle-neck"></div>
+            <div class="bottle-body">
+              <div class="bottle-liquid" style="background: linear-gradient(180deg, ${bottle.secondary} 0%, ${bottle.hex} 100%);">
+                <div class="liquid-wave"></div>
+              </div>
             </div>
           </div>
-        </div>
-        <span class="slot-index">#${i + 1}</span>
-      `;
+          <span class="slot-index">#${i + 1}</span>
+        `;
 
-      const bottleWrapper = slotEl.querySelector('.bottle-wrapper');
+        const bottleWrapper = slotEl.querySelector('.bottle-wrapper');
 
-      // ----------------------------------------------------
-      // 1. Desktop HTML5 Drag & Drop
-      // ----------------------------------------------------
-      bottleWrapper.addEventListener('dragstart', (e) => {
-        if (!this.isRacing || this.isCompleted) {
-          e.preventDefault();
-          return;
-        }
-        this.draggedIndex = i;
-        this.selectedTapIndex = null;
-        bottleWrapper.classList.add('dragging');
-        e.dataTransfer.setData('text/plain', i.toString());
-        e.dataTransfer.effectAllowed = 'move';
-      });
+        // ----------------------------------------------------
+        // 1. Desktop HTML5 Drag & Drop
+        // ----------------------------------------------------
+        bottleWrapper.addEventListener('dragstart', (e) => {
+          if (!this.isRacing || this.isCompleted) {
+            e.preventDefault();
+            return;
+          }
+          this.draggedIndex = i;
+          this.selectedTapIndex = null;
+          bottleWrapper.classList.add('dragging');
+          e.dataTransfer.setData('text/plain', i.toString());
+          e.dataTransfer.effectAllowed = 'move';
+        });
 
-      bottleWrapper.addEventListener('dragend', () => {
-        bottleWrapper.classList.remove('dragging');
-        this.draggedIndex = null;
-        this.shelfSlotsEl.querySelectorAll('.bottle-slot').forEach(s => s.classList.remove('drag-over'));
-      });
-
-      slotEl.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        if (this.draggedIndex !== null && this.draggedIndex !== i) {
-          slotEl.classList.add('drag-over');
-        }
-      });
-
-      slotEl.addEventListener('dragleave', () => {
-        slotEl.classList.remove('drag-over');
-      });
-
-      slotEl.addEventListener('drop', (e) => {
-        e.preventDefault();
-        slotEl.classList.remove('drag-over');
-        if (this.draggedIndex !== null && this.draggedIndex !== i) {
-          const fromIdx = this.draggedIndex;
+        bottleWrapper.addEventListener('dragend', () => {
+          bottleWrapper.classList.remove('dragging');
           this.draggedIndex = null;
-          this.swapBottles(fromIdx, i);
-        }
-      });
+          this.shelfSlotsEl.querySelectorAll('.bottle-slot').forEach(s => s.classList.remove('drag-over'));
+        });
 
-      // ----------------------------------------------------
-      // 2. Mobile Touch Drag & Drop
-      // ----------------------------------------------------
-      let touchMoved = false;
-      let startX = 0;
-      let startY = 0;
-
-      bottleWrapper.addEventListener('touchstart', (e) => {
-        if (!this.isRacing || this.isCompleted) return;
-        const touch = e.touches[0];
-        startX = touch.clientX;
-        startY = touch.clientY;
-        touchMoved = false;
-        this.draggedIndex = i;
-      }, { passive: true });
-
-      bottleWrapper.addEventListener('touchmove', (e) => {
-        if (!this.isRacing || this.isCompleted || this.draggedIndex === null) return;
-        const touch = e.touches[0];
-        const distX = Math.abs(touch.clientX - startX);
-        const distY = Math.abs(touch.clientY - startY);
-
-        if (distX > 8 || distY > 8) {
-          touchMoved = true;
-          // Create touch ghost if not present
-          if (!this.touchGhostEl) {
-            this.touchGhostEl = bottleWrapper.cloneNode(true);
-            this.touchGhostEl.classList.add('touch-ghost');
-            document.body.appendChild(this.touchGhostEl);
+        slotEl.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (this.draggedIndex !== null && this.draggedIndex !== i) {
+            slotEl.classList.add('drag-over');
           }
-          this.touchGhostEl.style.left = `${touch.clientX}px`;
-          this.touchGhostEl.style.top = `${touch.clientY}px`;
+        });
 
-          // Highlight slot under finger
-          const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
-          const hoveredSlot = targetEl ? targetEl.closest('.bottle-slot') : null;
-          
-          this.shelfSlotsEl.querySelectorAll('.bottle-slot').forEach(s => {
-            if (s === hoveredSlot && Number(s.dataset.index) !== this.draggedIndex) {
-              s.classList.add('drag-over');
-            } else {
-              s.classList.remove('drag-over');
+        slotEl.addEventListener('dragleave', () => {
+          slotEl.classList.remove('drag-over');
+        });
+
+        slotEl.addEventListener('drop', (e) => {
+          e.preventDefault();
+          slotEl.classList.remove('drag-over');
+          if (this.draggedIndex !== null && this.draggedIndex !== i) {
+            const fromIdx = this.draggedIndex;
+            this.draggedIndex = null;
+            this.swapBottles(fromIdx, i);
+          }
+        });
+
+        // ----------------------------------------------------
+        // 2. Mobile Touch Drag & Drop
+        // ----------------------------------------------------
+        let touchMoved = false;
+        let startX = 0;
+        let startY = 0;
+
+        bottleWrapper.addEventListener('touchstart', (e) => {
+          if (!this.isRacing || this.isCompleted) return;
+          const touch = e.touches[0];
+          startX = touch.clientX;
+          startY = touch.clientY;
+          touchMoved = false;
+          this.draggedIndex = i;
+        }, { passive: true });
+
+        bottleWrapper.addEventListener('touchmove', (e) => {
+          if (!this.isRacing || this.isCompleted || this.draggedIndex === null) return;
+          const touch = e.touches[0];
+          const distX = Math.abs(touch.clientX - startX);
+          const distY = Math.abs(touch.clientY - startY);
+
+          if (distX > 8 || distY > 8) {
+            touchMoved = true;
+            // Create touch ghost if not present
+            if (!this.touchGhostEl) {
+              this.touchGhostEl = bottleWrapper.cloneNode(true);
+              this.touchGhostEl.classList.add('touch-ghost');
+              document.body.appendChild(this.touchGhostEl);
             }
-          });
-        }
-      }, { passive: true });
+            this.touchGhostEl.style.left = `${touch.clientX}px`;
+            this.touchGhostEl.style.top = `${touch.clientY}px`;
 
-      bottleWrapper.addEventListener('touchend', (e) => {
-        if (this.touchGhostEl) {
-          this.touchGhostEl.remove();
-          this.touchGhostEl = null;
-        }
+            // Highlight slot under finger
+            const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+            const hoveredSlot = targetEl ? targetEl.closest('.bottle-slot') : null;
+            
+            this.shelfSlotsEl.querySelectorAll('.bottle-slot').forEach(s => {
+              if (s === hoveredSlot && Number(s.dataset.index) !== this.draggedIndex) {
+                s.classList.add('drag-over');
+              } else {
+                s.classList.remove('drag-over');
+              }
+            });
+          }
+        }, { passive: true });
 
-        if (touchMoved && this.draggedIndex !== null) {
-          const touch = e.changedTouches[0];
-          const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
-          const dropSlot = targetEl ? targetEl.closest('.bottle-slot') : null;
+        bottleWrapper.addEventListener('touchend', (e) => {
+          if (this.touchGhostEl) {
+            this.touchGhostEl.remove();
+            this.touchGhostEl = null;
+          }
 
-          if (dropSlot) {
-            const toIdx = Number(dropSlot.dataset.index);
-            if (!isNaN(toIdx) && toIdx !== this.draggedIndex) {
-              const fromIdx = this.draggedIndex;
-              this.draggedIndex = null;
-              this.swapBottles(fromIdx, toIdx);
+          if (touchMoved && this.draggedIndex !== null) {
+            const touch = e.changedTouches[0];
+            const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+            const dropSlot = targetEl ? targetEl.closest('.bottle-slot') : null;
+
+            if (dropSlot) {
+              const toIdx = Number(dropSlot.dataset.index);
+              if (!isNaN(toIdx) && toIdx !== this.draggedIndex) {
+                const fromIdx = this.draggedIndex;
+                this.draggedIndex = null;
+                this.swapBottles(fromIdx, toIdx);
+              }
             }
           }
-        }
 
-        this.shelfSlotsEl.querySelectorAll('.bottle-slot').forEach(s => s.classList.remove('drag-over'));
-        this.draggedIndex = null;
-      });
+          this.shelfSlotsEl.querySelectorAll('.bottle-slot').forEach(s => s.classList.remove('drag-over'));
+          this.draggedIndex = null;
+        });
 
-      // ----------------------------------------------------
-      // 3. Mobile Tap-to-Swap (Convenient Fast Fallback)
-      // ----------------------------------------------------
-      bottleWrapper.addEventListener('click', () => {
-        if (!this.isRacing || this.isCompleted) return;
-        if (touchMoved) return; // ignore tap if dragged
+        // ----------------------------------------------------
+        // 3. Mobile Tap-to-Swap (Convenient Fast Fallback)
+        // ----------------------------------------------------
+        bottleWrapper.addEventListener('click', () => {
+          if (!this.isRacing || this.isCompleted) return;
+          if (touchMoved) return; // ignore tap if dragged
 
-        if (this.selectedTapIndex === null) {
-          // Select bottle A
-          this.selectedTapIndex = i;
-          window.sounds?.playPop();
-          this.render();
-        } else if (this.selectedTapIndex === i) {
-          // Deselect
-          this.selectedTapIndex = null;
-          this.render();
-        } else {
-          // Swap bottle A and bottle B
-          const fromIdx = this.selectedTapIndex;
-          this.selectedTapIndex = null;
-          this.swapBottles(fromIdx, i);
-        }
-      });
+          if (this.selectedTapIndex === null) {
+            // Select bottle A
+            this.selectedTapIndex = i;
+            window.sounds?.playPop();
+            this.render();
+          } else if (this.selectedTapIndex === i) {
+            // Deselect
+            this.selectedTapIndex = null;
+            this.render();
+          } else {
+            // Swap bottle A and bottle B
+            const fromIdx = this.selectedTapIndex;
+            this.selectedTapIndex = null;
+            this.swapBottles(fromIdx, i);
+          }
+        });
 
-      this.shelfSlotsEl.appendChild(slotEl);
+        rowEl.appendChild(slotEl);
+      }
+
+      this.shelfSlotsEl.appendChild(rowEl);
     }
   }
 }
