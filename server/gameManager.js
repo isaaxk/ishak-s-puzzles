@@ -60,6 +60,7 @@ class GameManager {
     const settings = {
       difficulty: initialSettings.difficulty || 'hard', // Default 12 bottles
       maxPlayers: Math.min(Math.max(Number(initialSettings.maxPlayers) || 8, 2), 32),
+      raceMode: ['first', 'top3', 'all'].includes(initialSettings.raceMode) ? initialSettings.raceMode : 'all',
       errorPenaltyEnabled: Boolean(initialSettings.errorPenaltyEnabled),
       penaltyPerError: Number(initialSettings.penaltyPerError) || 2
     };
@@ -75,6 +76,7 @@ class GameManager {
       ready: true,
       completed: false,
       isWaiting: false,
+      surrendered: false,
       finishTime: null,
       finalTime: null,
       errors: 0,
@@ -168,6 +170,7 @@ class GameManager {
       ready: true,
       completed: false,
       isWaiting: isMidRace,
+      surrendered: false,
       finishTime: null,
       finalTime: null,
       errors: 0,
@@ -271,13 +274,7 @@ class GameManager {
 
     // If in RACING state, check if remaining active racers all completed
     if (room.state === 'RACING') {
-      const activeRacers = Array.from(room.players.values()).filter(p => !p.isWaiting);
-      if (activeRacers.length > 0 && activeRacers.every(p => p.completed)) {
-        room.state = 'FINISHED';
-        for (const p of room.players.values()) {
-          p.isWaiting = false;
-        }
-      }
+      this.checkRaceFinished(room);
     }
 
     // If host left, promote next connected player or any player
@@ -341,6 +338,10 @@ class GameManager {
 
     if (newSettings.penaltyPerError !== undefined) {
       room.settings.penaltyPerError = Math.max(Number(newSettings.penaltyPerError) || 0, 0.5);
+    }
+
+    if (newSettings.raceMode && ['first', 'top3', 'all'].includes(newSettings.raceMode)) {
+      room.settings.raceMode = newSettings.raceMode;
     }
 
     if (newSettings.gameplayMode !== undefined) {
@@ -412,6 +413,7 @@ class GameManager {
     // Reset player race stats
     for (const p of room.players.values()) {
       p.isWaiting = false; // Anyone in room is now an active racer
+      p.surrendered = false;
       p.completed = false;
       p.finishTime = null;
       p.finalTime = null;
@@ -429,12 +431,46 @@ class GameManager {
     return { success: true, room };
   }
 
+  checkRaceFinished(room) {
+    if (room.state !== 'RACING') return false;
+
+    const activeRacers = Array.from(room.players.values()).filter(p => !p.isWaiting);
+    if (activeRacers.length === 0) return false;
+
+    const completedCount = activeRacers.filter(p => p.completed).length;
+    const mode = room.settings.raceMode || 'all';
+
+    let isFinished = false;
+
+    if (mode === 'first') {
+      // Mode 1: Game finished when first player solved the puzzle
+      isFinished = completedCount >= 1;
+    } else if (mode === 'top3') {
+      // Mode 2: Game finished when top 3 players solved the puzzle (or all active if < 3)
+      const targetCount = Math.min(3, activeRacers.length);
+      isFinished = completedCount >= targetCount;
+    } else {
+      // Mode 3 (all): Game finished when all players solved the puzzle or last players surrender
+      isFinished = activeRacers.every(p => p.completed || p.surrendered);
+    }
+
+    if (isFinished) {
+      room.state = 'FINISHED';
+      // When race completes, waiting players become full participants directly
+      for (const p of room.players.values()) {
+        p.isWaiting = false;
+      }
+    }
+
+    return isFinished;
+  }
+
   updatePlayerProgress(roomCode, socketId, data = {}) {
     const room = this.getRoom(roomCode);
     if (!room || room.state !== 'RACING') return null;
 
     const player = room.players.get(socketId);
-    if (!player || player.completed || player.isWaiting) return null;
+    if (!player || player.completed || player.isWaiting || player.surrendered) return null;
 
     if (data.matched !== undefined) {
       player.matched = Math.min(Math.max(Number(data.matched) || 0, 0), player.total);
@@ -453,7 +489,7 @@ class GameManager {
     const player = room.players.get(socketId);
     if (!player) return null;
 
-    if (player.completed || player.isWaiting) {
+    if (player.completed || player.isWaiting || player.surrendered) {
       return { player, room, alreadyFinished: true };
     }
 
@@ -478,21 +514,72 @@ class GameManager {
       }
     }
 
-    // Check if all active players completed
-    const activeRacers = playerArray.filter(p => !p.isWaiting);
-    const allCompleted = activeRacers.length > 0 && activeRacers.every(p => p.completed);
-    if (allCompleted) {
-      room.state = 'FINISHED';
-      // When race completes, waiting players become full participants directly
-      for (const p of room.players.values()) {
-        p.isWaiting = false;
-      }
-    }
+    // Evaluate finish condition based on room raceMode
+    const allCompleted = this.checkRaceFinished(room);
 
     return {
       player,
       room,
       allCompleted,
+      rankings: ranked
+    };
+  }
+
+  surrenderPlayer(roomCode, socketId) {
+    const room = this.getRoom(roomCode);
+    if (!room || room.state !== 'RACING') return null;
+
+    const player = room.players.get(socketId);
+    if (!player || player.completed || player.isWaiting || player.surrendered) return null;
+
+    player.surrendered = true;
+
+    // Compute updated rankings
+    const playerArray = Array.from(room.players.values());
+    const ranked = rankPlayers(playerArray, room.settings);
+    for (const r of ranked) {
+      const p = room.players.get(r.id);
+      if (p) {
+        p.rank = r.rank;
+      }
+    }
+
+    // Check if surrender causes race to finish (e.g. Mode 3 when all remaining surrendered)
+    const allCompleted = this.checkRaceFinished(room);
+
+    return {
+      player,
+      room,
+      allCompleted,
+      rankings: ranked
+    };
+  }
+
+  hostEndRace(roomCode, hostSocketId) {
+    const room = this.getRoom(roomCode);
+    if (!room) return { error: 'Room not found' };
+    if (room.hostId !== hostSocketId) return { error: 'Only the host can end the race' };
+    if (room.state !== 'RACING' && room.state !== 'COUNTDOWN') {
+      return { error: 'No race is currently in progress' };
+    }
+
+    room.state = 'FINISHED';
+    for (const p of room.players.values()) {
+      p.isWaiting = false;
+    }
+
+    const playerArray = Array.from(room.players.values());
+    const ranked = rankPlayers(playerArray, room.settings);
+    for (const r of ranked) {
+      const p = room.players.get(r.id);
+      if (p) {
+        p.rank = r.rank;
+      }
+    }
+
+    return {
+      success: true,
+      room,
       rankings: ranked
     };
   }
@@ -509,6 +596,7 @@ class GameManager {
 
     for (const p of room.players.values()) {
       p.isWaiting = false; // Directly part of the room
+      p.surrendered = false;
       p.completed = false;
       p.finishTime = null;
       p.finalTime = null;

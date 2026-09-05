@@ -182,4 +182,106 @@ describe('GameManager Tests', () => {
     assert.equal(room.players.get('socket-p2').isWaiting, false);
   });
 
+  test('Mode 1: Race finishes as soon as first player solves puzzle', () => {
+    const gm = new GameManager();
+    const room = gm.createRoom('socket-host', 'Host', { raceMode: 'first' });
+    gm.joinRoom(room.code, 'socket-p1', 'Player1');
+    gm.joinRoom(room.code, 'socket-p2', 'Player2');
+
+    gm.startCountdown(room.code, 'socket-host');
+    room.state = 'RACING';
+
+    // Player 1 updates progress
+    gm.updatePlayerProgress(room.code, 'socket-p1', { matched: 8, errors: 1 });
+
+    // Host finishes first
+    const finishRes = gm.recordPlayerFinish(room.code, 'socket-host', { finishTime: 18.25, errors: 0 });
+    assert.equal(finishRes.allCompleted, true, 'Mode 1 finishes immediately on 1st completion');
+    assert.equal(room.state, 'FINISHED');
+    assert.equal(finishRes.rankings[0].id, 'socket-host');
+    assert.equal(finishRes.rankings[0].rank, 1);
+  });
+
+  test('Mode 2: Race finishes when top 3 players solve puzzle', () => {
+    const gm = new GameManager();
+    const room = gm.createRoom('socket-host', 'Host', { raceMode: 'top3' });
+    gm.joinRoom(room.code, 'socket-p1', 'Player1');
+    gm.joinRoom(room.code, 'socket-p2', 'Player2');
+    gm.joinRoom(room.code, 'socket-p3', 'Player3');
+    gm.joinRoom(room.code, 'socket-p4', 'Player4');
+
+    gm.startCountdown(room.code, 'socket-host');
+    room.state = 'RACING';
+
+    // 1st finisher
+    const f1 = gm.recordPlayerFinish(room.code, 'socket-p1', { finishTime: 15.0 });
+    assert.equal(f1.allCompleted, false, '1st finish does not end Mode 2');
+    assert.equal(room.state, 'RACING');
+
+    // 2nd finisher
+    const f2 = gm.recordPlayerFinish(room.code, 'socket-p2', { finishTime: 18.0 });
+    assert.equal(f2.allCompleted, false, '2nd finish does not end Mode 2');
+    assert.equal(room.state, 'RACING');
+
+    // 3rd finisher
+    const f3 = gm.recordPlayerFinish(room.code, 'socket-p3', { finishTime: 22.0 });
+    assert.equal(f3.allCompleted, true, '3rd finish ends Mode 2');
+    assert.equal(room.state, 'FINISHED');
+    assert.equal(f3.rankings.length, 5);
+  });
+
+  test('Mode 3: Race finishes when all players solve or surrender', () => {
+    const gm = new GameManager();
+    const room = gm.createRoom('socket-host', 'Host', { raceMode: 'all' });
+    gm.joinRoom(room.code, 'socket-p1', 'Player1');
+    gm.joinRoom(room.code, 'socket-p2', 'Player2');
+
+    gm.startCountdown(room.code, 'socket-host');
+    room.state = 'RACING';
+
+    // Player 1 finishes
+    const f1 = gm.recordPlayerFinish(room.code, 'socket-p1', { finishTime: 14.5 });
+    assert.equal(f1.allCompleted, false);
+
+    // Host surrenders
+    const sHost = gm.surrenderPlayer(room.code, 'socket-host');
+    assert.equal(sHost.allCompleted, false);
+    assert.equal(sHost.player.surrendered, true);
+
+    // Player 2 surrenders -> last unfinished player surrenders -> race finishes!
+    const sP2 = gm.surrenderPlayer(room.code, 'socket-p2');
+    assert.equal(sP2.allCompleted, true);
+    assert.equal(room.state, 'FINISHED');
+
+    // Rankings: Player 1 (finished) is rank 1; surrendered players follow
+    assert.equal(sP2.rankings[0].id, 'socket-p1');
+    assert.equal(sP2.rankings[0].rank, 1);
+    assert.equal(sP2.rankings[1].surrendered, true);
+    assert.equal(sP2.rankings[2].surrendered, true);
+  });
+
+  test('Host can unilaterally end the race at any moment', () => {
+    const gm = new GameManager();
+    const room = gm.createRoom('socket-host', 'Host', { raceMode: 'all' });
+    gm.joinRoom(room.code, 'socket-p1', 'Player1');
+    gm.joinRoom(room.code, 'socket-p2', 'Player2');
+
+    gm.startCountdown(room.code, 'socket-host');
+    room.state = 'RACING';
+
+    // Non-host attempts to end race -> error
+    const nonHostEnd = gm.hostEndRace(room.code, 'socket-p1');
+    assert.ok(nonHostEnd.error);
+    assert.match(nonHostEnd.error, /host/i);
+    assert.equal(room.state, 'RACING');
+
+    // Host ends race -> succeeds
+    const hostEnd = gm.hostEndRace(room.code, 'socket-host');
+    assert.equal(hostEnd.success, true);
+    assert.equal(room.state, 'FINISHED');
+    assert.ok(hostEnd.rankings);
+    assert.equal(hostEnd.rankings.length, 3);
+  });
+
 });
+

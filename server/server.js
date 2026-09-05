@@ -316,6 +316,55 @@ io.on('connection', (socket) => {
     if (typeof callback === 'function') callback({ success: true, player: result.player, rankings: result.rankings });
   });
 
+  // 8b. Player Surrender
+  socket.on('surrender_race', (callback) => {
+    const room = gameManager.getRoomBySocket(socket.id);
+    if (!room) {
+      if (typeof callback === 'function') callback({ error: 'Room not found' });
+      return;
+    }
+
+    const result = gameManager.surrenderPlayer(room.code, socket.id);
+    if (!result) {
+      if (typeof callback === 'function') callback({ error: 'Cannot surrender' });
+      return;
+    }
+
+    io.to(`room_${room.code}`).emit('player_surrendered', {
+      playerId: socket.id,
+      player: result.player,
+      allCompleted: result.allCompleted,
+      rankings: result.rankings,
+      message: `${result.player.name} surrendered 🏳️`
+    });
+
+    broadcastRoomUpdate(room.code);
+    if (typeof callback === 'function') callback({ success: true, allCompleted: result.allCompleted });
+  });
+
+  // 8c. Host End Race
+  socket.on('host_end_race', (callback) => {
+    const room = gameManager.getRoomBySocket(socket.id);
+    if (!room) {
+      if (typeof callback === 'function') callback({ error: 'Room not found' });
+      return;
+    }
+
+    const result = gameManager.hostEndRace(room.code, socket.id);
+    if (result.error) {
+      if (typeof callback === 'function') callback({ error: result.error });
+      return;
+    }
+
+    io.to(`room_${room.code}`).emit('race_ended_by_host', {
+      message: 'Host ended the race! 🛑',
+      rankings: result.rankings
+    });
+
+    broadcastRoomUpdate(room.code);
+    if (typeof callback === 'function') callback({ success: true });
+  });
+
   // 9. Restart Race / Rematch
   socket.on('restart_race', (callback) => {
     const room = gameManager.getRoomBySocket(socket.id);

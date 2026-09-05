@@ -121,6 +121,15 @@
             </div>
 
             <div class="form-group" style="grid-column: span 2;">
+              <label class="form-label" for="select-race-mode">Race Finish Mode</label>
+              <select id="select-race-mode" class="select-input">
+                <option value="first">🥇 Mode 1: First to Solve (Sudden Death)</option>
+                <option value="top3">🥉 Mode 2: Top 3 to Solve (Podium Rush)</option>
+                <option value="all" selected>🏁 Mode 3: All Players Solve / Surrender</option>
+              </select>
+            </div>
+
+            <div class="form-group" style="grid-column: span 2;">
               <label class="form-label">Error Penalty</label>
               <div class="toggle-switch-wrap">
                 <span style="font-size: 0.85rem; font-weight: 600;">Affect Finish Time (+seconds)</span>
@@ -161,7 +170,7 @@
       <div class="competitors-tracker">
         <div class="tracker-title">
           <span>🏆 Live Leaderboard</span>
-          <span>Automatic Finish On 100%</span>
+          <span id="race-mode-badge" class="race-mode-badge">🏁 Mode: All Players Finish</span>
         </div>
         <div id="rival-list" class="rival-list"></div>
       </div>
@@ -222,6 +231,16 @@
         <div class="drag-instructions">
           <span class="instruction-badge">💡 Secret Order</span>
           <span>Find the hidden arrangement by swapping bottles! Instant progress updates after every swap. Finish is 100% automatic.</span>
+        </div>
+
+        <!-- Race Actions: Surrender & Host End Game -->
+        <div class="race-actions-bar">
+          <button id="btn-surrender" class="btn btn-outline btn-surrender" title="Surrender this race">
+            <span>🏳️ Surrender</span>
+          </button>
+          <button id="btn-host-end-race" class="btn btn-danger btn-host-end" style="display: none;" title="Host: End race immediately for everyone">
+            <span>🛑 End Race (Host)</span>
+          </button>
         </div>
       </div>
     </main>

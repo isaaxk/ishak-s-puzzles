@@ -77,7 +77,12 @@ function comparePlayers(p1, p2, errorPenaltyEnabled = false, penaltyPerError = 0
     return 0;
   }
 
-  // Neither completed: rank by progress (matched bottles descending), then errors ascending
+  // Neither completed: rank non-surrendered before surrendered, then by progress (matched bottles descending), then errors ascending
+  const p1Surrendered = Boolean(p1.surrendered);
+  const p2Surrendered = Boolean(p2.surrendered);
+  if (!p1Surrendered && p2Surrendered) return -1;
+  if (p1Surrendered && !p2Surrendered) return 1;
+
   const m1 = Number(p1.matched) || 0;
   const m2 = Number(p2.matched) || 0;
   if (m1 !== m2) {
@@ -118,7 +123,8 @@ function rankPlayers(players, settings = {}) {
       matched: Number(p.matched) || 0,
       total: Number(p.total) || 0,
       completed: Boolean(p.completed),
-      isWaiting: Boolean(p.isWaiting)
+      isWaiting: Boolean(p.isWaiting),
+      surrendered: Boolean(p.surrendered)
     };
   });
 

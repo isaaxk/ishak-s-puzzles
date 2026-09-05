@@ -48,6 +48,7 @@
   const btnLeaveRoom = document.getElementById('btn-leave-room');
   const selectDifficulty = document.getElementById('select-difficulty');
   const selectMaxPlayers = document.getElementById('select-max-players');
+  const selectRaceMode = document.getElementById('select-race-mode');
   const togglePenalty = document.getElementById('toggle-penalty');
   const penaltySecRow = document.getElementById('penalty-seconds-row');
   const inputPenaltySec = document.getElementById('penalty-seconds');
@@ -58,7 +59,10 @@
   const waitingBannerEl = document.getElementById('lobby-waiting-banner');
 
   // Race Elements
+  const raceModeBadge = document.getElementById('race-mode-badge');
   const rivalListEl = document.getElementById('rival-list');
+  const btnSurrender = document.getElementById('btn-surrender');
+  const btnHostEndRace = document.getElementById('btn-host-end-race');
 
   // Podium Elements
   const rankingTbody = document.getElementById('ranking-tbody');
@@ -216,12 +220,22 @@
     qrModal.classList.remove('active');
   });
 
+  // Helper to format race mode label
+  function getRaceModeLabel(mode) {
+    switch (mode) {
+      case 'first': return '🥇 Mode: First to Solve';
+      case 'top3': return '🥉 Mode: Top 3 Finish';
+      case 'all': default: return '🏁 Mode: All Players / Surrender';
+    }
+  }
+
   // 6. Host Settings Modification
   function emitSettingsUpdate() {
     if (!isHost || !currentRoom) return;
     const settings = {
       difficulty: selectDifficulty.value,
       maxPlayers: Number(selectMaxPlayers.value),
+      raceMode: selectRaceMode ? selectRaceMode.value : 'all',
       errorPenaltyEnabled: togglePenalty.checked,
       penaltyPerError: Number(inputPenaltySec.value) || 2
     };
@@ -232,6 +246,7 @@
 
   selectDifficulty?.addEventListener('change', emitSettingsUpdate);
   selectMaxPlayers?.addEventListener('change', emitSettingsUpdate);
+  selectRaceMode?.addEventListener('change', emitSettingsUpdate);
   togglePenalty?.addEventListener('change', () => {
     penaltySecRow.style.display = togglePenalty.checked ? 'flex' : 'none';
     emitSettingsUpdate();
@@ -260,7 +275,7 @@
     }
 
     // Adjust settings inputs based on host privileges
-    const formControls = [selectDifficulty, selectMaxPlayers, togglePenalty, inputPenaltySec];
+    const formControls = [selectDifficulty, selectMaxPlayers, selectRaceMode, togglePenalty, inputPenaltySec];
     formControls.forEach(ctrl => {
       if (ctrl) ctrl.disabled = !isHost;
     });
@@ -273,6 +288,7 @@
     if (currentRoom.settings) {
       selectDifficulty.value = currentRoom.settings.difficulty || 'hard';
       selectMaxPlayers.value = currentRoom.settings.maxPlayers || 8;
+      if (selectRaceMode) selectRaceMode.value = currentRoom.settings.raceMode || 'all';
       togglePenalty.checked = Boolean(currentRoom.settings.errorPenaltyEnabled);
       penaltySecRow.style.display = togglePenalty.checked ? 'flex' : 'none';
       inputPenaltySec.value = currentRoom.settings.penaltyPerError || 2;
@@ -392,6 +408,22 @@
     podiumModal.classList.remove('active');
     showScreen(screenRace);
 
+    // Update race mode badge
+    if (raceModeBadge) {
+      raceModeBadge.textContent = getRaceModeLabel(data.settings?.raceMode || currentRoom?.settings?.raceMode);
+    }
+
+    // Reset race action buttons
+    if (btnSurrender) {
+      btnSurrender.disabled = false;
+      btnSurrender.innerHTML = '<span>🏳️ Surrender</span>';
+      btnSurrender.style.display = 'inline-flex';
+    }
+    if (btnHostEndRace) {
+      btnHostEndRace.style.display = isHost ? 'inline-flex' : 'none';
+      btnHostEndRace.disabled = false;
+    }
+
     // Initialize game engine with synchronized puzzle
     if (!gameEngine) {
       gameEngine = new window.ColorBottleGame({
@@ -449,9 +481,81 @@
     const formattedFinish = window.formatTimeDisplay ? window.formatTimeDisplay(data.player.finishTime) : `${data.player.finishTime.toFixed(2)}s`;
     showToast(`🏁 ${data.player.name} finished in ${formattedFinish}!`);
     updateRivalTracks();
+
+    if (data.allCompleted) {
+      if (gameEngine) gameEngine.stopTimer();
+      if (btnSurrender) btnSurrender.disabled = true;
+      if (btnHostEndRace) btnHostEndRace.disabled = true;
+      if (data.rankings && screenRace.classList.contains('active')) {
+        displayPodium(data.rankings, currentRoom?.settings);
+      }
+    } else if (data.rankings && screenRace.classList.contains('active') && data.player?.id === myPlayerId) {
+      displayPodium(data.rankings, currentRoom?.settings);
+    }
+  });
+
+  // Player surrendered notification
+  socket.on('player_surrendered', (data) => {
+    showToast(`🏳️ ${data.player?.name || 'A player'} surrendered`);
+    if (currentRoom && currentRoom.players) {
+      const p = currentRoom.players.find(x => x.id === data.playerId);
+      if (p) p.surrendered = true;
+    }
+    updateSingleRival({
+      playerId: data.playerId,
+      surrendered: true
+    });
+
+    if (data.allCompleted) {
+      if (gameEngine) gameEngine.stopTimer();
+      if (btnSurrender) btnSurrender.disabled = true;
+      if (btnHostEndRace) btnHostEndRace.disabled = true;
+      if (data.rankings && screenRace.classList.contains('active')) {
+        displayPodium(data.rankings, currentRoom?.settings);
+      }
+    }
+  });
+
+  // Host ended race notification
+  socket.on('race_ended_by_host', (data) => {
+    showToast(`🛑 ${data.message || 'Host ended the race!'}`);
+    if (gameEngine) gameEngine.stopTimer();
+    if (btnSurrender) btnSurrender.disabled = true;
+    if (btnHostEndRace) btnHostEndRace.disabled = true;
     if (data.rankings && screenRace.classList.contains('active')) {
       displayPodium(data.rankings, currentRoom?.settings);
     }
+  });
+
+  // Surrender button click
+  btnSurrender?.addEventListener('click', () => {
+    if (!gameEngine || !gameEngine.isRacing || gameEngine.isCompleted) return;
+    if (!confirm('Are you sure you want to surrender this race?')) return;
+    btnSurrender.disabled = true;
+    btnSurrender.innerHTML = '<span>🏳️ Surrendered</span>';
+    gameEngine.stopTimer();
+    socket.emit('surrender_race', (res) => {
+      if (res && res.error) {
+        showToast(res.error);
+        btnSurrender.disabled = false;
+        btnSurrender.innerHTML = '<span>🏳️ Surrender</span>';
+      } else {
+        showToast('You surrendered 🏳️');
+      }
+    });
+  });
+
+  // Host end race button click
+  btnHostEndRace?.addEventListener('click', () => {
+    if (!isHost) return;
+    if (!confirm('End the race immediately for all players?')) return;
+    btnHostEndRace.disabled = true;
+    socket.emit('host_end_race', (res) => {
+      if (res && res.error) {
+        showToast(res.error);
+        btnHostEndRace.disabled = false;
+      }
+    });
   });
 
   // Rematch / Reset Race
@@ -491,6 +595,13 @@
     const row = rivalListEl.querySelector(`.rival-row[data-player="${data.playerId}"]`);
     if (!row) return;
 
+    if (data.surrendered) {
+      row.classList.add('rival-surrendered');
+      const score = row.querySelector('.rival-score');
+      if (score) score.innerHTML = '<span class="badge-surrendered">🏳️ Surrendered</span>';
+      return;
+    }
+
     const percent = Math.min(Math.round((data.matched / data.total) * 100), 100);
     const fill = row.querySelector('.rival-fill');
     const score = row.querySelector('.rival-score');
@@ -513,7 +624,8 @@
         matched: p.matched,
         total: p.total || total,
         errors: p.errors,
-        connected: p.connected
+        connected: p.connected,
+        surrendered: p.surrendered
       });
     });
   }
@@ -544,13 +656,20 @@
       else if (p.rank === 2) medal = '🥈 2nd';
       else if (p.rank === 3) medal = '🥉 3rd';
 
-      const timeText = p.completed && p.finishTime !== null
-        ? (window.formatTimeDisplay ? window.formatTimeDisplay(p.finishTime) : `${p.finishTime.toFixed(2)}s`)
-        : `${p.matched}/${p.total}`;
-      const penaltyText = penaltyEnabled ? (p.errors > 0 ? `+${(p.errors * penaltyPerError).toFixed(1)}s` : '0.0s') : '-';
-      const finalTimeText = p.completed && p.finalTime !== null
-        ? (window.formatTimeDisplay ? window.formatTimeDisplay(p.finalTime) : `${p.finalTime.toFixed(2)}s`)
-        : 'DNF';
+      let timeText = '';
+      let finalTimeText = '';
+      if (p.surrendered) {
+        timeText = '<span class="badge-surrendered">🏳️ Surrendered</span>';
+        finalTimeText = '<span style="color: var(--text-secondary)">DNF</span>';
+      } else if (p.completed && p.finishTime !== null) {
+        timeText = window.formatTimeDisplay ? window.formatTimeDisplay(p.finishTime) : `${p.finishTime.toFixed(2)}s`;
+        finalTimeText = p.finalTime !== null
+          ? (window.formatTimeDisplay ? window.formatTimeDisplay(p.finalTime) : `${p.finalTime.toFixed(2)}s`)
+          : '<span style="color: var(--text-secondary)">DNF</span>';
+      } else {
+        timeText = `${p.matched}/${p.total}`;
+        finalTimeText = '<span style="color: var(--text-secondary)">DNF</span>';
+      }
 
       row.innerHTML = `
         <td class="rank-cell rank-${p.rank}">${medal}</td>
@@ -625,7 +744,25 @@
               }
             });
           }
-          if (res.room.puzzle && (!gameEngine.isRacing && !gameEngine.isCompleted)) {
+          if (raceModeBadge) {
+            raceModeBadge.textContent = getRaceModeLabel(res.room.settings?.raceMode);
+          }
+          if (btnHostEndRace) {
+            btnHostEndRace.style.display = isHost ? 'inline-flex' : 'none';
+            btnHostEndRace.disabled = false;
+          }
+          if (btnSurrender) {
+            btnSurrender.style.display = 'inline-flex';
+            if (myP?.surrendered) {
+              btnSurrender.disabled = true;
+              btnSurrender.innerHTML = '<span>🏳️ Surrendered</span>';
+            } else {
+              btnSurrender.disabled = false;
+              btnSurrender.innerHTML = '<span>🏳️ Surrender</span>';
+            }
+          }
+
+          if (res.room.puzzle && (!gameEngine.isRacing && !gameEngine.isCompleted && !myP?.surrendered)) {
             gameEngine.initRace(res.room.puzzle, res.room.settings, res.room.startTime);
             gameEngine.startRace(res.room.startTime);
           }

@@ -117,6 +117,7 @@ class ColorBottleGame {
   }
 
   stopTimer() {
+    this.isRacing = false;
     if (this.timerAnimationId) {
       cancelAnimationFrame(this.timerAnimationId);
       this.timerAnimationId = null;

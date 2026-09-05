@@ -76,9 +76,34 @@ describe('Full Multiplayer Socket Integration Tests', () => {
         const res = gameManager.recordPlayerFinish(room.code, socket.id, data);
         ioServer.to(`room_${room.code}`).emit('player_finished', {
           player: res.player,
-          rankings: res.rankings
+          rankings: res.rankings,
+          allCompleted: res.allCompleted
         });
         cb({ success: true, player: res.player, rankings: res.rankings });
+      });
+
+      socket.on('surrender_race', (cb) => {
+        const room = gameManager.getRoomBySocket(socket.id);
+        const res = gameManager.surrenderPlayer(room.code, socket.id);
+        if (!res) return cb({ error: 'Cannot surrender' });
+        ioServer.to(`room_${room.code}`).emit('player_surrendered', {
+          playerId: socket.id,
+          player: res.player,
+          allCompleted: res.allCompleted,
+          rankings: res.rankings
+        });
+        cb({ success: true, allCompleted: res.allCompleted });
+      });
+
+      socket.on('host_end_race', (cb) => {
+        const room = gameManager.getRoomBySocket(socket.id);
+        const res = gameManager.hostEndRace(room.code, socket.id);
+        if (res.error) return cb({ error: res.error });
+        ioServer.to(`room_${room.code}`).emit('race_ended_by_host', {
+          message: 'Host ended the race! 🛑',
+          rankings: res.rankings
+        });
+        cb({ success: true });
       });
     });
 
@@ -280,6 +305,96 @@ describe('Full Multiplayer Socket Integration Tests', () => {
     host.disconnect();
     racer.disconnect();
     lateJoiner.disconnect();
+  });
+
+  test('Player surrender emits player_surrendered and finishes race when remaining racers surrender', async () => {
+    const host = createClient();
+    const guest = createClient();
+    let roomCode;
+
+    await new Promise((resolve) => {
+      host.emit('create_room', { name: 'Host', settings: { raceMode: 'all' } }, (res) => {
+        roomCode = res.room.code;
+        resolve();
+      });
+    });
+
+    await new Promise((resolve) => {
+      guest.emit('join_room', { code: roomCode, name: 'Guest' }, () => resolve());
+    });
+
+    await new Promise((resolve) => {
+      host.emit('start_race', () => resolve());
+    });
+
+    // Host finishes
+    await new Promise((resolve) => {
+      host.emit('player_finish', { finishTime: 19.5, errors: 0 }, () => resolve());
+    });
+
+    // Guest surrenders
+    const pSurrender = new Promise((resolve) => {
+      host.on('player_surrendered', (data) => {
+        assert.equal(data.allCompleted, true);
+        assert.equal(data.player.name, 'Guest');
+        assert.equal(data.player.surrendered, true);
+        resolve();
+      });
+    });
+
+    await new Promise((resolve) => {
+      guest.emit('surrender_race', (res) => {
+        assert.equal(res.success, true);
+        assert.equal(res.allCompleted, true);
+        resolve();
+      });
+    });
+
+    await pSurrender;
+
+    host.disconnect();
+    guest.disconnect();
+  });
+
+  test('Host ending race emits race_ended_by_host with final rankings', async () => {
+    const host = createClient();
+    const guest = createClient();
+    let roomCode;
+
+    await new Promise((resolve) => {
+      host.emit('create_room', { name: 'Host', settings: { raceMode: 'all' } }, (res) => {
+        roomCode = res.room.code;
+        resolve();
+      });
+    });
+
+    await new Promise((resolve) => {
+      guest.emit('join_room', { code: roomCode, name: 'Guest' }, () => resolve());
+    });
+
+    await new Promise((resolve) => {
+      host.emit('start_race', () => resolve());
+    });
+
+    const pHostEnd = new Promise((resolve) => {
+      guest.on('race_ended_by_host', (data) => {
+        assert.ok(data.rankings);
+        assert.equal(data.rankings.length, 2);
+        resolve();
+      });
+    });
+
+    await new Promise((resolve) => {
+      host.emit('host_end_race', (res) => {
+        assert.equal(res.success, true);
+        resolve();
+      });
+    });
+
+    await pHostEnd;
+
+    host.disconnect();
+    guest.disconnect();
   });
 
 });
