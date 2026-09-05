@@ -123,4 +123,29 @@ describe('GameManager Tests', () => {
     assert.equal(room.players.get('socket-competitor').isHost, true);
   });
 
+  test('Disconnect grace period keeps player in room and reconnectPlayer restores session', () => {
+    const gm = new GameManager();
+    const room = gm.createRoom('socket-host', 'HostPlayer', {}, 'token-host-123');
+    const joinRes = gm.joinRoom(room.code, 'socket-player2', 'Player2', 'token-p2-456');
+
+    // Player 2 switches apps / temporary disconnect
+    const dcRes = gm.handleDisconnect('socket-player2');
+    assert.ok(dcRes);
+    assert.equal(dcRes.player.connected, false);
+    assert.equal(room.players.size, 2, 'Player should NOT be removed on disconnect');
+
+    // Player 2 returns with a new socket ID
+    const recRes = gm.reconnectPlayer(room.code, 'socket-player2-new', 'token-p2-456');
+    assert.ok(recRes.success);
+    assert.equal(recRes.player.id, 'socket-player2-new');
+    assert.equal(recRes.player.connected, true);
+    assert.equal(room.players.get('socket-player2-new').name, 'Player2');
+    assert.equal(room.players.has('socket-player2'), false);
+    assert.equal(room.players.size, 2);
+
+    // Clean up timer
+    gm.clearDisconnectTimer('token-p2-456');
+    gm.clearDisconnectTimer('token-host-123');
+  });
+
 });

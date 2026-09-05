@@ -14,6 +14,8 @@ const { GameManager } = require('./gameManager');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
+  pingTimeout: 45000,
+  pingInterval: 20000,
   cors: {
     origin: '*',
     methods: ['GET', 'POST']
@@ -92,13 +94,14 @@ function broadcastRoomUpdate(roomCode) {
 // Socket.io Connection Logic
 io.on('connection', (socket) => {
   // 1. Create Room
-  socket.on('create_room', ({ name, settings }, callback) => {
+  socket.on('create_room', ({ name, settings, token }, callback) => {
     try {
-      const room = gameManager.createRoom(socket.id, name, settings);
+      const room = gameManager.createRoom(socket.id, name, settings, token);
       socket.join(`room_${room.code}`);
       const summary = gameManager.getRoomSummary(room.code);
+      const hostPlayer = room.players.get(socket.id);
       if (typeof callback === 'function') {
-        callback({ success: true, room: summary, playerId: socket.id });
+        callback({ success: true, room: summary, playerId: socket.id, playerToken: hostPlayer.token });
       }
       broadcastRoomUpdate(room.code);
     } catch (err) {
@@ -107,9 +110,9 @@ io.on('connection', (socket) => {
   });
 
   // 2. Join Room
-  socket.on('join_room', ({ code, name }, callback) => {
+  socket.on('join_room', ({ code, name, token }, callback) => {
     try {
-      const result = gameManager.joinRoom(code, socket.id, name);
+      const result = gameManager.joinRoom(code, socket.id, name, token);
       if (result.error) {
         if (typeof callback === 'function') callback({ error: result.error });
         return;
@@ -117,12 +120,36 @@ io.on('connection', (socket) => {
       socket.join(`room_${result.room.code}`);
       const summary = gameManager.getRoomSummary(result.room.code);
       if (typeof callback === 'function') {
-        callback({ success: true, room: summary, playerId: socket.id });
+        callback({ success: true, room: summary, playerId: socket.id, playerToken: result.player.token });
       }
       broadcastRoomUpdate(result.room.code);
-      io.to(`room_${result.room.code}`).emit('player_joined', {
+      io.to(`room_${result.room.code}`).emit(result.reconnected ? 'player_reconnected' : 'player_joined', {
         player: result.player,
-        message: `${result.player.name} joined the room`
+        message: result.reconnected ? `${result.player.name} reconnected` : `${result.player.name} joined the room`
+      });
+    } catch (err) {
+      if (typeof callback === 'function') callback({ error: err.message });
+    }
+  });
+
+  // 2b. Reconnect Session (after background app switch or network resume)
+  socket.on('reconnect_session', ({ code, roomCode, token }, callback) => {
+    try {
+      const targetCode = code || roomCode;
+      const result = gameManager.reconnectPlayer(targetCode, socket.id, token);
+      if (result.error) {
+        if (typeof callback === 'function') callback({ error: result.error });
+        return;
+      }
+      socket.join(`room_${result.room.code}`);
+      const summary = gameManager.getRoomSummary(result.room.code);
+      if (typeof callback === 'function') {
+        callback({ success: true, room: summary, playerId: socket.id, player: result.player });
+      }
+      broadcastRoomUpdate(result.room.code);
+      io.to(`room_${result.room.code}`).emit('player_reconnected', {
+        player: result.player,
+        message: `${result.player.name} is back!`
       });
     } catch (err) {
       if (typeof callback === 'function') callback({ error: err.message });
@@ -292,15 +319,26 @@ io.on('connection', (socket) => {
     if (typeof callback === 'function') callback({ success: true });
   });
 
-  // 10. Disconnect
+  // 10. Disconnect (grace period for app switching / brief network drop)
   socket.on('disconnect', () => {
-    const leaveResult = gameManager.leaveRoom(socket.id);
-    if (leaveResult && !leaveResult.roomDeleted) {
-      broadcastRoomUpdate(leaveResult.room.code);
-      io.to(`room_${leaveResult.room.code}`).emit('player_left', {
-        player: leaveResult.player,
-        newHostId: leaveResult.newHostId,
-        message: `${leaveResult.player?.name || 'A player'} disconnected`
+    const dcResult = gameManager.handleDisconnect(socket.id, (leaveResult) => {
+      // 60-second grace period expired, player actually evicted
+      if (leaveResult && !leaveResult.roomDeleted) {
+        broadcastRoomUpdate(leaveResult.room.code);
+        io.to(`room_${leaveResult.room.code}`).emit('player_left', {
+          player: leaveResult.player,
+          newHostId: leaveResult.newHostId,
+          message: `${leaveResult.player?.name || 'A player'} timed out`
+        });
+      }
+    });
+
+    if (dcResult) {
+      // Broadcast that player is temporarily away / disconnected
+      broadcastRoomUpdate(dcResult.room.code);
+      io.to(`room_${dcResult.room.code}`).emit('player_away', {
+        player: dcResult.player,
+        message: `${dcResult.player.name} switched apps (away)`
       });
     }
   });

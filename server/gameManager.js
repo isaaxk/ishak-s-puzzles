@@ -40,6 +40,7 @@ class GameManager {
   constructor() {
     this.rooms = new Map(); // roomCode -> roomData
     this.socketToRoom = new Map(); // socketId -> roomCode
+    this.disconnectTimers = new Map(); // token -> timeout
   }
 
   generateRoomCode() {
@@ -54,20 +55,23 @@ class GameManager {
     return code;
   }
 
-  createRoom(hostSocketId, hostName, initialSettings = {}) {
+  createRoom(hostSocketId, hostName, initialSettings = {}, hostToken = null) {
     const code = this.generateRoomCode();
     const settings = {
-      difficulty: initialSettings.difficulty || 'hard', // Default 12 bottles as requested
+      difficulty: initialSettings.difficulty || 'hard', // Default 12 bottles
       maxPlayers: Math.min(Math.max(Number(initialSettings.maxPlayers) || 8, 2), 32),
       errorPenaltyEnabled: Boolean(initialSettings.errorPenaltyEnabled),
-      penaltyPerError: Number(initialSettings.penaltyPerError) || 2, // e.g. +2s per error
-      gameplayMode: initialSettings.gameplayMode || 'speed_match' // 'speed_match' or 'mystery_box'
+      penaltyPerError: Number(initialSettings.penaltyPerError) || 2
     };
+
+    const token = hostToken || ('tok_' + Math.random().toString(36).substring(2, 10));
 
     const hostPlayer = {
       id: hostSocketId,
+      token,
       name: (hostName || 'Host').trim().slice(0, 16) || 'Host',
       isHost: true,
+      connected: true,
       ready: true,
       completed: false,
       finishTime: null,
@@ -106,12 +110,37 @@ class GameManager {
     return this.getRoom(code);
   }
 
-  joinRoom(roomCode, socketId, playerName) {
+  joinRoom(roomCode, socketId, playerName, playerToken = null) {
     const code = (roomCode || '').toUpperCase();
     const room = this.rooms.get(code);
 
     if (!room) {
       return { error: 'Room not found. Please check the room code.' };
+    }
+
+    const token = playerToken || ('tok_' + Math.random().toString(36).substring(2, 10));
+
+    // Check if player with this token is already in room (reconnecting)
+    let existingPlayer = null;
+    for (const p of room.players.values()) {
+      if (p.token === token) {
+        existingPlayer = p;
+        break;
+      }
+    }
+
+    if (existingPlayer) {
+      this.clearDisconnectTimer(token);
+      if (existingPlayer.id !== socketId) {
+        this.socketToRoom.delete(existingPlayer.id);
+        room.players.delete(existingPlayer.id);
+      }
+      existingPlayer.id = socketId;
+      existingPlayer.connected = true;
+      room.players.set(socketId, existingPlayer);
+      this.socketToRoom.set(socketId, code);
+
+      return { room, player: existingPlayer, reconnected: true };
     }
 
     if (room.state !== 'LOBBY') {
@@ -127,13 +156,15 @@ class GameManager {
     // Disconnect old room if socket was already mapped
     const oldCode = this.socketToRoom.get(socketId);
     if (oldCode && oldCode !== code) {
-      this.leaveRoom(socketId);
+      this.explicitLeaveRoom(socketId);
     }
 
     const player = {
       id: socketId,
+      token,
       name: cleanName,
       isHost: false,
+      connected: true,
       ready: true,
       completed: false,
       finishTime: null,
@@ -147,10 +178,76 @@ class GameManager {
     room.players.set(socketId, player);
     this.socketToRoom.set(socketId, code);
 
+    return { room, player, reconnected: false };
+  }
+
+  reconnectPlayer(roomCode, socketId, playerToken) {
+    if (!roomCode || !playerToken) return { error: 'Missing room code or token' };
+    const code = roomCode.toUpperCase();
+    const room = this.rooms.get(code);
+    if (!room) return { error: 'Room not found' };
+
+    let player = null;
+    for (const p of room.players.values()) {
+      if (p.token === playerToken) {
+        player = p;
+        break;
+      }
+    }
+
+    if (!player) return { error: 'Player session not found' };
+
+    this.clearDisconnectTimer(playerToken);
+
+    if (player.id !== socketId) {
+      this.socketToRoom.delete(player.id);
+      room.players.delete(player.id);
+      player.id = socketId;
+      room.players.set(socketId, player);
+    }
+    player.connected = true;
+    this.socketToRoom.set(socketId, code);
+
+    return { success: true, room, player };
+  }
+
+  handleDisconnect(socketId, onTimeout) {
+    const code = this.socketToRoom.get(socketId);
+    if (!code) return null;
+    const room = this.rooms.get(code);
+    if (!room) return null;
+
+    const player = room.players.get(socketId);
+    if (!player) return null;
+
+    // Mark as disconnected / away (player switched apps)
+    player.connected = false;
+    this.clearDisconnectTimer(player.token);
+
+    // Start 60s grace period timer
+    const timerId = setTimeout(() => {
+      this.disconnectTimers.delete(player.token);
+      if (!player.connected) {
+        const leaveRes = this.explicitLeaveRoom(player.id);
+        if (leaveRes && typeof onTimeout === 'function') {
+          onTimeout(leaveRes);
+        }
+      }
+    }, 60000);
+
+    this.disconnectTimers.set(player.token, timerId);
+
     return { room, player };
   }
 
-  leaveRoom(socketId) {
+  clearDisconnectTimer(token) {
+    if (this.disconnectTimers.has(token)) {
+      clearTimeout(this.disconnectTimers.get(token));
+      this.disconnectTimers.delete(token);
+    }
+  }
+
+  explicitLeaveRoom(socketId) {
     const code = this.socketToRoom.get(socketId);
     if (!code) return null;
 
@@ -160,6 +257,9 @@ class GameManager {
     if (!room) return null;
 
     const player = room.players.get(socketId);
+    if (player) {
+      this.clearDisconnectTimer(player.token);
+    }
     room.players.delete(socketId);
 
     // If room is empty, delete room
@@ -168,10 +268,13 @@ class GameManager {
       return { roomDeleted: true, code, player };
     }
 
-    // If host left, promote next player
+    // If host left, promote next connected player or any player
     let newHostId = null;
     if (room.hostId === socketId) {
-      const nextPlayer = room.players.values().next().value;
+      let nextPlayer = Array.from(room.players.values()).find(p => p.connected);
+      if (!nextPlayer) {
+        nextPlayer = room.players.values().next().value;
+      }
       if (nextPlayer) {
         nextPlayer.isHost = true;
         room.hostId = nextPlayer.id;
@@ -180,6 +283,10 @@ class GameManager {
     }
 
     return { room, player, newHostId, roomDeleted: false };
+  }
+
+  leaveRoom(socketId) {
+    return this.explicitLeaveRoom(socketId);
   }
 
   kickPlayer(roomCode, hostSocketId, targetPlayerId) {
@@ -191,6 +298,7 @@ class GameManager {
     const target = room.players.get(targetPlayerId);
     if (!target) return { error: 'Player not found in room' };
 
+    this.clearDisconnectTimer(target.token);
     room.players.delete(targetPlayerId);
     this.socketToRoom.delete(targetPlayerId);
 

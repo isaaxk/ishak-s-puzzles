@@ -12,6 +12,13 @@
   let isHost = false;
   let gameEngine = null;
 
+  // Session storage token for app-switch persistence
+  let myPlayerToken = sessionStorage.getItem('bottle_race_token');
+  if (!myPlayerToken) {
+    myPlayerToken = 'tok_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+    sessionStorage.setItem('bottle_race_token', myPlayerToken);
+  }
+
   // DOM Elements - Screens
   const screenHome = document.getElementById('screen-home');
   const screenLobby = document.getElementById('screen-lobby');
@@ -90,6 +97,12 @@
     inputRoomCode.value = autoJoinCode.toUpperCase();
   }
 
+  const savedName = sessionStorage.getItem('bottle_race_name');
+  if (savedName) {
+    if (inputPlayerName) inputPlayerName.value = savedName;
+    if (inputHostName) inputHostName.value = savedName;
+  }
+
   // Home Tabs Switching
   tabJoin?.addEventListener('click', () => {
     tabJoin.classList.add('active');
@@ -108,12 +121,18 @@
   // 1. Create Room
   btnCreate?.addEventListener('click', () => {
     const name = inputHostName.value.trim() || 'Host';
-    socket.emit('create_room', { name, settings: {} }, (res) => {
+    sessionStorage.setItem('bottle_race_name', name);
+    socket.emit('create_room', { name, settings: {}, token: myPlayerToken }, (res) => {
       if (res.error) {
         showToast(res.error);
         return;
       }
       myPlayerId = res.playerId;
+      if (res.playerToken) {
+        myPlayerToken = res.playerToken;
+        sessionStorage.setItem('bottle_race_token', myPlayerToken);
+      }
+      sessionStorage.setItem('bottle_race_room', res.room.code);
       currentRoom = res.room;
       isHost = true;
       setupLobby();
@@ -132,12 +151,18 @@
       return;
     }
 
-    socket.emit('join_room', { code, name }, (res) => {
+    sessionStorage.setItem('bottle_race_name', name);
+    socket.emit('join_room', { code, name, token: myPlayerToken }, (res) => {
       if (res.error) {
         showToast(res.error);
         return;
       }
       myPlayerId = res.playerId;
+      if (res.playerToken) {
+        myPlayerToken = res.playerToken;
+        sessionStorage.setItem('bottle_race_token', myPlayerToken);
+      }
+      sessionStorage.setItem('bottle_race_room', res.room.code);
       currentRoom = res.room;
       isHost = res.room.hostId === myPlayerId;
       setupLobby();
@@ -148,6 +173,7 @@
 
   // 3. Leave Room
   btnLeaveRoom?.addEventListener('click', () => {
+    sessionStorage.removeItem('bottle_race_room');
     socket.emit('leave_room', () => {
       currentRoom = null;
       isHost = false;
@@ -253,15 +279,17 @@
     players.forEach(p => {
       const isMe = p.id === myPlayerId;
       const isRoomHost = p.id === currentRoom.hostId;
+      const isAway = p.connected === false;
 
       const item = document.createElement('div');
-      item.className = 'player-item';
+      item.className = `player-item ${isAway ? 'player-away' : ''}`;
       item.innerHTML = `
         <div class="player-info">
-          <div class="player-avatar">🍾</div>
+          <div class="player-avatar">${isAway ? '💤' : '🍾'}</div>
           <span class="player-name-text">${escapeHtml(p.name)}</span>
           ${isRoomHost ? '<span class="badge-host">HOST</span>' : ''}
           ${isMe ? '<span class="badge-you">YOU</span>' : ''}
+          ${isAway ? '<span class="badge-away">📱 AWAY</span>' : ''}
         </div>
         ${isHost && !isMe ? `<button class="kick-btn" data-id="${p.id}">Kick</button>` : ''}
       `;
@@ -302,11 +330,32 @@
     showToast(`👋 ${data.player.name} joined!`);
   });
 
+  socket.on('player_away', (data) => {
+    showToast(`📱 ${data.player?.name || 'A player'} is away (in another app)`);
+    if (currentRoom && currentRoom.players) {
+      const p = currentRoom.players.find(x => x.id === data.player?.id || x.token === data.player?.token);
+      if (p) p.connected = false;
+      renderPlayerList();
+      updateRivalTracks();
+    }
+  });
+
+  socket.on('player_reconnected', (data) => {
+    showToast(`⚡ ${data.player?.name || 'A player'} is back!`);
+    if (currentRoom && currentRoom.players) {
+      const p = currentRoom.players.find(x => x.id === data.player?.id || x.token === data.player?.token);
+      if (p) p.connected = true;
+      renderPlayerList();
+      updateRivalTracks();
+    }
+  });
+
   socket.on('player_left', (data) => {
     showToast(`🚪 ${data.player?.name || 'A player'} left`);
   });
 
   socket.on('kicked', (data) => {
+    sessionStorage.removeItem('bottle_race_room');
     currentRoom = null;
     isHost = false;
     showScreen(screenHome);
@@ -426,6 +475,11 @@
 
     if (fill) fill.style.width = `${percent}%`;
     if (score) score.textContent = `${data.matched}/${data.total}`;
+    if (data.connected === false) {
+      row.classList.add('rival-away');
+    } else {
+      row.classList.remove('rival-away');
+    }
   }
 
   function updateRivalTracks() {
@@ -436,7 +490,8 @@
         playerId: p.id,
         matched: p.matched,
         total: p.total || total,
-        errors: p.errors
+        errors: p.errors,
+        connected: p.connected
       });
     });
   }
@@ -508,6 +563,75 @@
     podiumModal.classList.remove('active');
     showScreen(screenLobby);
     setupLobby();
+  });
+
+  // ==========================================
+  // Session Reconnection for Mobile App Switching
+  // ==========================================
+  let isReconnecting = false;
+  function tryReconnect() {
+    const savedRoomCode = sessionStorage.getItem('bottle_race_room');
+    if (!savedRoomCode || !myPlayerToken || isReconnecting) return;
+
+    isReconnecting = true;
+    socket.emit('reconnect_session', { roomCode: savedRoomCode, token: myPlayerToken }, (res) => {
+      isReconnecting = false;
+      if (res && res.success) {
+        myPlayerId = res.playerId;
+        currentRoom = res.room;
+        isHost = res.room.hostId === myPlayerId;
+
+        if (res.room.state === 'LOBBY') {
+          setupLobby();
+          showScreen(screenLobby);
+        } else if (res.room.state === 'RACING' || res.room.state === 'COUNTDOWN') {
+          showScreen(screenRace);
+          if (!gameEngine) {
+            gameEngine = new window.ColorBottleGame({
+              onProgress: (progressData) => {
+                socket.emit('player_progress', progressData);
+              },
+              onFinish: (finishData) => {
+                socket.emit('player_finish', finishData, (fres) => {
+                  if (fres.rankings) {
+                    displayPodium(fres.rankings, currentRoom?.settings);
+                  }
+                });
+              }
+            });
+          }
+          if (res.room.puzzle && (!gameEngine.isRacing && !gameEngine.isCompleted)) {
+            gameEngine.initRace(res.room.puzzle, res.room.settings, res.room.startTime);
+            gameEngine.startRace(res.room.startTime);
+          }
+          setupRivalTracks();
+          updateRivalTracks();
+        } else if (res.room.state === 'FINISHED') {
+          displayPodium(res.room.players, res.room.settings);
+        }
+        showToast('Connected back to room! 🔄');
+      } else if (res && res.error) {
+        // Room no longer exists or grace period expired
+        sessionStorage.removeItem('bottle_race_room');
+      }
+    });
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      tryReconnect();
+    }
+  });
+
+  window.addEventListener('focus', () => {
+    tryReconnect();
+  });
+
+  socket.on('connect', () => {
+    const savedRoomCode = sessionStorage.getItem('bottle_race_room');
+    if (savedRoomCode) {
+      tryReconnect();
+    }
   });
 
 })();
