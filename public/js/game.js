@@ -272,13 +272,18 @@ class ColorBottleGame {
         const isSelected = this.selectedTapIndex === i;
 
         slotEl.innerHTML = `
-          <div class="bottle-wrapper ${isSelected ? 'selected' : ''}" draggable="true" data-index="${i}" style="--bottle-color: ${bottle.hex}">
-            <div class="bottle-cork"></div>
+          <div class="bottle-wrapper ${isSelected ? 'selected' : ''}" draggable="true" data-index="${i}" style="--bottle-color: ${bottle.hex}; --bottle-secondary: ${bottle.secondary || bottle.hex};">
+            <div class="bottle-cork-top"></div>
+            <div class="bottle-lip-rim"></div>
             <div class="bottle-neck"></div>
             <div class="bottle-body">
-              <div class="bottle-liquid" style="background: linear-gradient(180deg, ${bottle.secondary} 0%, ${bottle.hex} 100%);">
-                <div class="liquid-wave"></div>
+              <div class="glass-shoulder-shine"></div>
+              <div class="glass-specular-streak"></div>
+              <div class="bottle-liquid">
+                <div class="liquid-meniscus"></div>
+                <div class="liquid-body-fill"></div>
               </div>
+              <div class="glass-base-curve"></div>
             </div>
           </div>
           <span class="slot-index">#${i + 1}</span>

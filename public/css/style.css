@@ -981,14 +981,14 @@ body {
    REALISTIC GLASS BOTTLE COMPONENT
 ============================================================ */
 .bottle-wrapper {
-  width: 48px;
-  height: 90px;
+  width: 44px;
+  height: 94px;
   display: flex;
   flex-direction: column;
   align-items: center;
   cursor: pointer;
   position: relative;
-  transition: transform 0.2s, filter 0.2s;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
   touch-action: manipulation;
 }
 
@@ -998,7 +998,7 @@ body {
 
 .bottle-wrapper.selected {
   transform: translateY(-8px) scale(1.05);
-  filter: drop-shadow(0 0 10px #38bdf8);
+  filter: drop-shadow(0 0 12px #38bdf8);
 }
 
 .bottle-wrapper.shake-error {
@@ -1017,79 +1017,167 @@ body {
 
 @keyframes matchPop {
   0% { transform: scale(1); }
-  50% { transform: scale(1.2) translateY(-10px); }
+  50% { transform: scale(1.18) translateY(-8px); }
   100% { transform: scale(1); }
 }
 
-/* Cork Stopper */
-.bottle-cork {
-  width: 14px;
+/* 1. Closed Cork Stopper */
+.bottle-cork-top {
+  width: 15px;
   height: 8px;
-  background: linear-gradient(to right, #b45309, #d97706, #92400e);
-  border-radius: 2px 2px 0 0;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.4);
-  z-index: 2;
-}
-
-/* Bottle Neck */
-.bottle-neck {
-  width: 16px;
-  height: 14px;
-  background: rgba(255, 255, 255, 0.15);
-  border: 1.5px solid rgba(255, 255, 255, 0.4);
+  background: linear-gradient(180deg, #fde047 0%, #eab308 30%, #ca8a04 70%, #854d0e 100%);
+  border-radius: 3px 3px 1px 1px;
+  border: 1px solid #a16207;
   border-bottom: none;
-  z-index: 1;
-}
-
-/* Bottle Body */
-.bottle-body {
-  width: 42px;
-  height: 64px;
-  border-radius: 6px 6px 12px 12px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 2px solid rgba(255, 255, 255, 0.45);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.6), 0 1px 2px rgba(0, 0, 0, 0.35);
+  z-index: 4;
   position: relative;
-  overflow: hidden;
-  box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.15), 0 4px 10px rgba(0,0,0,0.3);
+  margin-bottom: -1px;
 }
 
-/* Glass specular reflection highlight */
-.bottle-body::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 3px;
-  width: 6px;
-  height: 100%;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0.1) 80%, transparent 100%);
+/* 2. Bottle Lip Collar Rim (Donut/Ring Collar) */
+.bottle-lip-rim {
+  width: 22px;
+  height: 6px;
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.5) 0%, rgba(14, 116, 144, 0.7) 100%);
+  border: 2px solid rgba(56, 189, 248, 0.85);
   border-radius: 4px;
-  pointer-events: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.8);
+  position: relative;
   z-index: 3;
 }
 
-/* Liquid container inside bottle */
+.bottle-lip-rim::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 3px;
+  width: 5px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 2px;
+}
+
+/* 3. Short Bottle Neck */
+.bottle-neck {
+  width: 16px;
+  height: 6px;
+  background: rgba(14, 165, 233, 0.15);
+  border-left: 2px solid rgba(56, 189, 248, 0.8);
+  border-right: 2px solid rgba(56, 189, 248, 0.8);
+  position: relative;
+  z-index: 2;
+  margin-top: -1px;
+  margin-bottom: -1px;
+}
+
+/* 4. Capsule Bottle Body */
+.bottle-body {
+  width: 44px;
+  height: 74px;
+  border-radius: 18px 18px 16px 16px;
+  background: rgba(15, 23, 42, 0.35);
+  border: 2px solid rgba(56, 189, 248, 0.8);
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 6px rgba(56, 189, 248, 0.3),
+    0 0 10px rgba(56, 189, 248, 0.2),
+    0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+/* Specular Curve on Upper Left Shoulder */
+.glass-shoulder-shine {
+  position: absolute;
+  top: 2px;
+  left: 6px;
+  width: 14px;
+  height: 6px;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0) 80%);
+  border-radius: 50%;
+  transform: rotate(-25deg);
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Longitudinal Specular Reflection Streak down the left */
+.glass-specular-streak {
+  position: absolute;
+  top: 10px;
+  left: 3px;
+  width: 4px;
+  bottom: 12px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.65) 0%,
+    rgba(255, 255, 255, 0.3) 30%,
+    rgba(255, 255, 255, 0.1) 70%,
+    transparent 100%
+  );
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* 5. Full Liquid Column */
 .bottle-liquid {
   position: absolute;
   bottom: 0;
   left: 0;
-  width: 100%;
-  height: 75%;
-  border-radius: 0 0 10px 10px;
-  transition: height 0.3s ease;
-  overflow: hidden;
+  right: 0;
+  height: 87%; /* Full to near the shoulders as requested */
+  border-radius: 0 0 14px 14px;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
 }
 
-/* Liquid wave meniscus */
-.liquid-wave {
+/* 3D Meniscus Elliptical Surface on top of liquid column */
+.liquid-meniscus {
   position: absolute;
   top: -4px;
   left: 0;
-  width: 200%;
-  height: 8px;
-  background: inherit;
-  opacity: 0.9;
-  filter: brightness(1.2);
-  border-radius: 40%;
+  right: 0;
+  height: 10px;
+  border-radius: 50%;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.6) 0%,
+    var(--bottle-secondary, var(--bottle-color)) 35%,
+    var(--bottle-color) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  z-index: 2;
+}
+
+/* Liquid Fluid Body */
+.liquid-body-fill {
+  flex: 1;
+  width: 100%;
+  background: linear-gradient(
+    180deg,
+    var(--bottle-secondary, var(--bottle-color)) 0%,
+    var(--bottle-color) 60%,
+    rgba(0, 0, 0, 0.25) 100%
+  );
+  border-radius: 0 0 14px 14px;
+  box-shadow:
+    inset 2px 0 4px rgba(255, 255, 255, 0.25),
+    inset -2px 0 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Thick Glass Base Curve at Bottom */
+.glass-base-curve {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 7px;
+  background: linear-gradient(180deg, transparent 0%, rgba(56, 189, 248, 0.45) 100%);
+  border-radius: 0 0 14px 14px;
+  pointer-events: none;
+  z-index: 4;
 }
 
 /* Mystery Box Mode Styling */
@@ -1332,20 +1420,25 @@ body {
     padding-bottom: 10px;
   }
   .bottle-wrapper {
-    width: 44px;
-    height: 82px;
+    width: 40px;
+    height: 84px;
   }
-  .bottle-body {
-    width: 38px;
-    height: 58px;
+  .bottle-cork-top {
+    width: 13px;
+    height: 7px;
+  }
+  .bottle-lip-rim {
+    width: 20px;
+    height: 5px;
   }
   .bottle-neck {
     width: 14px;
-    height: 12px;
+    height: 5px;
   }
-  .bottle-cork {
-    width: 12px;
-    height: 7px;
+  .bottle-body {
+    width: 40px;
+    height: 66px;
+    border-radius: 16px 16px 14px 14px;
   }
   .bottle-slot {
     padding: 3px;
@@ -1361,20 +1454,25 @@ body {
     gap: 5px;
   }
   .bottle-wrapper {
-    width: 38px;
-    height: 74px;
+    width: 36px;
+    height: 76px;
   }
-  .bottle-body {
-    width: 33px;
-    height: 52px;
+  .bottle-cork-top {
+    width: 11px;
+    height: 6px;
+  }
+  .bottle-lip-rim {
+    width: 18px;
+    height: 5px;
   }
   .bottle-neck {
     width: 12px;
-    height: 10px;
+    height: 4px;
   }
-  .bottle-cork {
-    width: 10px;
-    height: 6px;
+  .bottle-body {
+    width: 36px;
+    height: 60px;
+    border-radius: 14px 14px 12px 12px;
   }
   .bottle-slot {
     padding: 2px;
