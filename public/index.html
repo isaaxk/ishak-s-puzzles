@@ -72,6 +72,15 @@
          SCREEN 2: LOBBY
     ============================================================ -->
     <main id="screen-lobby" class="screen">
+      <!-- Waiting for current race banner (shown when joined mid-race) -->
+      <div id="lobby-waiting-banner" class="waiting-banner" style="display: none;">
+        <div class="waiting-banner-icon">⏳</div>
+        <div class="waiting-banner-content">
+          <div class="waiting-banner-title">Race Currently in Progress!</div>
+          <div class="waiting-banner-text">Waiting in lobby while competitors finish. You will join the next race directly!</div>
+        </div>
+      </div>
+
       <div class="card lobby-header">
         <div class="room-code-badge-wrap">
           <div class="room-code-info">

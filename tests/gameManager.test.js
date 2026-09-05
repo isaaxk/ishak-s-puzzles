@@ -148,4 +148,38 @@ describe('GameManager Tests', () => {
     gm.clearDisconnectTimer('token-host-123');
   });
 
+  test('Mid-race joiner waits in lobby and automatically becomes active when race finishes', () => {
+    const gm = new GameManager();
+    const room = gm.createRoom('socket-host', 'Host');
+    gm.joinRoom(room.code, 'socket-p1', 'Player1');
+
+    // Host starts race
+    gm.startCountdown(room.code, 'socket-host');
+    room.state = 'RACING';
+
+    // Player 2 joins while race is in progress
+    const joinMidRace = gm.joinRoom(room.code, 'socket-p2', 'Player2');
+    assert.ok(joinMidRace.player, 'Player 2 should be allowed to join');
+    assert.equal(joinMidRace.isWaiting, true, 'Player 2 must be marked as waiting');
+    assert.equal(joinMidRace.player.isWaiting, true);
+
+    // Player 1 finishes the race
+    const hostFinish = gm.recordPlayerFinish(room.code, 'socket-host', { finishTime: 20.00 });
+    assert.equal(hostFinish.allCompleted, false, 'Player 1 is still racing');
+
+    const p1Finish = gm.recordPlayerFinish(room.code, 'socket-p1', { finishTime: 25.00 });
+    assert.equal(p1Finish.allCompleted, true, 'All active racers finished, ignoring waiting player');
+    assert.equal(room.state, 'FINISHED');
+
+    // Check that Player 2 is now one of them directly!
+    const p2 = room.players.get('socket-p2');
+    assert.equal(p2.isWaiting, false, 'Waiting player must directly become a full room participant');
+
+    // Host restarts race for rematch
+    const restartRes = gm.restartRace(room.code, 'socket-host');
+    assert.equal(restartRes.success, true);
+    assert.equal(room.state, 'LOBBY');
+    assert.equal(room.players.get('socket-p2').isWaiting, false);
+  });
+
 });

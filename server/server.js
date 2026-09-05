@@ -120,12 +120,23 @@ io.on('connection', (socket) => {
       socket.join(`room_${result.room.code}`);
       const summary = gameManager.getRoomSummary(result.room.code);
       if (typeof callback === 'function') {
-        callback({ success: true, room: summary, playerId: socket.id, playerToken: result.player.token });
+        callback({
+          success: true,
+          room: summary,
+          playerId: socket.id,
+          playerToken: result.player.token,
+          isWaiting: Boolean(result.player.isWaiting)
+        });
       }
       broadcastRoomUpdate(result.room.code);
+      const joinMsg = result.reconnected
+        ? `${result.player.name} reconnected`
+        : (result.player.isWaiting
+            ? `${result.player.name} joined the room (waiting in lobby)`
+            : `${result.player.name} joined the room`);
       io.to(`room_${result.room.code}`).emit(result.reconnected ? 'player_reconnected' : 'player_joined', {
         player: result.player,
-        message: result.reconnected ? `${result.player.name} reconnected` : `${result.player.name} joined the room`
+        message: joinMsg
       });
     } catch (err) {
       if (typeof callback === 'function') callback({ error: err.message });
@@ -144,7 +155,13 @@ io.on('connection', (socket) => {
       socket.join(`room_${result.room.code}`);
       const summary = gameManager.getRoomSummary(result.room.code);
       if (typeof callback === 'function') {
-        callback({ success: true, room: summary, playerId: socket.id, player: result.player });
+        callback({
+          success: true,
+          room: summary,
+          playerId: socket.id,
+          player: result.player,
+          isWaiting: Boolean(result.player.isWaiting)
+        });
       }
       broadcastRoomUpdate(result.room.code);
       io.to(`room_${result.room.code}`).emit('player_reconnected', {

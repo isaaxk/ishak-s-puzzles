@@ -42,6 +42,13 @@ function calculateFinalTime(finishTime, errors = 0, errorPenaltyEnabled = false,
  * Returns negative if p1 ranks higher (better), positive if p2 ranks higher, 0 if tied.
  */
 function comparePlayers(p1, p2, errorPenaltyEnabled = false, penaltyPerError = 0) {
+  // Waiting players (joined mid-race) always rank behind active racers
+  const p1Waiting = Boolean(p1.isWaiting);
+  const p2Waiting = Boolean(p2.isWaiting);
+  if (p1Waiting && !p2Waiting) return 1;
+  if (!p1Waiting && p2Waiting) return -1;
+  if (p1Waiting && p2Waiting) return 0;
+
   const p1Completed = Boolean(p1.completed);
   const p2Completed = Boolean(p2.completed);
 
@@ -110,16 +117,20 @@ function rankPlayers(players, settings = {}) {
       errors: Number(p.errors) || 0,
       matched: Number(p.matched) || 0,
       total: Number(p.total) || 0,
-      completed: Boolean(p.completed)
+      completed: Boolean(p.completed),
+      isWaiting: Boolean(p.isWaiting)
     };
   });
 
   // Sort according to comparison rules
   list.sort((a, b) => comparePlayers(a, b, errorPenaltyEnabled, penaltyPerError));
 
-  // Assign ranks with tie handling
-  let currentRank = 1;
+  // Assign ranks with tie handling (waiting players receive null rank)
   for (let i = 0; i < list.length; i++) {
+    if (list[i].isWaiting) {
+      list[i].rank = null;
+      continue;
+    }
     if (i === 0) {
       list[i].rank = 1;
     } else {

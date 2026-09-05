@@ -74,6 +74,7 @@ class GameManager {
       connected: true,
       ready: true,
       completed: false,
+      isWaiting: false,
       finishTime: null,
       finalTime: null,
       errors: 0,
@@ -140,11 +141,7 @@ class GameManager {
       room.players.set(socketId, existingPlayer);
       this.socketToRoom.set(socketId, code);
 
-      return { room, player: existingPlayer, reconnected: true };
-    }
-
-    if (room.state !== 'LOBBY') {
-      return { error: 'Race is currently in progress. Please wait for the next race.' };
+      return { room, player: existingPlayer, reconnected: true, isWaiting: Boolean(existingPlayer.isWaiting) };
     }
 
     if (room.players.size >= room.settings.maxPlayers) {
@@ -159,6 +156,9 @@ class GameManager {
       this.explicitLeaveRoom(socketId);
     }
 
+    // If race is active, player enters lobby in waiting state until current race finishes
+    const isMidRace = room.state === 'RACING' || room.state === 'COUNTDOWN';
+
     const player = {
       id: socketId,
       token,
@@ -167,6 +167,7 @@ class GameManager {
       connected: true,
       ready: true,
       completed: false,
+      isWaiting: isMidRace,
       finishTime: null,
       finalTime: null,
       errors: 0,
@@ -178,7 +179,7 @@ class GameManager {
     room.players.set(socketId, player);
     this.socketToRoom.set(socketId, code);
 
-    return { room, player, reconnected: false };
+    return { room, player, reconnected: false, isWaiting: isMidRace };
   }
 
   reconnectPlayer(roomCode, socketId, playerToken) {
@@ -266,6 +267,17 @@ class GameManager {
     if (room.players.size === 0) {
       this.rooms.delete(code);
       return { roomDeleted: true, code, player };
+    }
+
+    // If in RACING state, check if remaining active racers all completed
+    if (room.state === 'RACING') {
+      const activeRacers = Array.from(room.players.values()).filter(p => !p.isWaiting);
+      if (activeRacers.length > 0 && activeRacers.every(p => p.completed)) {
+        room.state = 'FINISHED';
+        for (const p of room.players.values()) {
+          p.isWaiting = false;
+        }
+      }
     }
 
     // If host left, promote next connected player or any player
@@ -399,6 +411,7 @@ class GameManager {
 
     // Reset player race stats
     for (const p of room.players.values()) {
+      p.isWaiting = false; // Anyone in room is now an active racer
       p.completed = false;
       p.finishTime = null;
       p.finalTime = null;
@@ -421,7 +434,7 @@ class GameManager {
     if (!room || room.state !== 'RACING') return null;
 
     const player = room.players.get(socketId);
-    if (!player || player.completed) return null;
+    if (!player || player.completed || player.isWaiting) return null;
 
     if (data.matched !== undefined) {
       player.matched = Math.min(Math.max(Number(data.matched) || 0, 0), player.total);
@@ -440,7 +453,7 @@ class GameManager {
     const player = room.players.get(socketId);
     if (!player) return null;
 
-    if (player.completed) {
+    if (player.completed || player.isWaiting) {
       return { player, room, alreadyFinished: true };
     }
 
@@ -465,10 +478,15 @@ class GameManager {
       }
     }
 
-    // Check if all players completed
-    const allCompleted = Array.from(room.players.values()).every(p => p.completed);
+    // Check if all active players completed
+    const activeRacers = playerArray.filter(p => !p.isWaiting);
+    const allCompleted = activeRacers.length > 0 && activeRacers.every(p => p.completed);
     if (allCompleted) {
       room.state = 'FINISHED';
+      // When race completes, waiting players become full participants directly
+      for (const p of room.players.values()) {
+        p.isWaiting = false;
+      }
     }
 
     return {
@@ -490,6 +508,7 @@ class GameManager {
     room.countdownStartTime = null;
 
     for (const p of room.players.values()) {
+      p.isWaiting = false; // Directly part of the room
       p.completed = false;
       p.finishTime = null;
       p.finalTime = null;

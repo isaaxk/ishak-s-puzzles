@@ -456,6 +456,22 @@ body {
   animation: pulse-away 2s infinite ease-in-out;
 }
 
+.badge-waiting {
+  background: rgba(168, 85, 247, 0.2);
+  color: #c084fc;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  animation: pulse-waiting-badge 2s infinite ease-in-out;
+}
+
+@keyframes pulse-waiting-badge {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
 @keyframes pulse-away {
   0%, 100% { opacity: 0.65; }
   50% { opacity: 1; }
@@ -466,8 +482,48 @@ body {
   border-color: rgba(245, 158, 11, 0.25);
 }
 
+.player-item.player-waiting {
+  border-color: rgba(168, 85, 247, 0.35);
+  background: rgba(168, 85, 247, 0.05);
+}
+
 .rival-row.rival-away {
   opacity: 0.65;
+}
+
+/* Waiting Banner for Mid-Race Joiners */
+.waiting-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.25) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  animation: pulse-waiting 2.5s infinite ease-in-out;
+}
+
+@keyframes pulse-waiting {
+  0%, 100% { border-color: rgba(245, 158, 11, 0.4); box-shadow: 0 0 10px rgba(245, 158, 11, 0.1); }
+  50% { border-color: rgba(245, 158, 11, 0.8); box-shadow: 0 0 20px rgba(245, 158, 11, 0.25); }
+}
+
+.waiting-banner-icon {
+  font-size: 1.8rem;
+}
+
+.waiting-banner-title {
+  font-weight: 800;
+  font-size: 1rem;
+  color: #fbbf24;
+  margin-bottom: 2px;
+}
+
+.waiting-banner-text {
+  font-size: 0.85rem;
+  color: #fde68a;
+  line-height: 1.35;
 }
 
 .kick-btn {

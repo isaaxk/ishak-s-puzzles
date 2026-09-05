@@ -24,11 +24,16 @@ describe('Full Multiplayer Socket Integration Tests', () => {
         cb({ success: true, room: gameManager.getRoomSummary(room.code), playerId: socket.id });
       });
 
-      socket.on('join_room', ({ code, name }, cb) => {
-        const res = gameManager.joinRoom(code, socket.id, name);
+      socket.on('join_room', ({ code, name, token }, cb) => {
+        const res = gameManager.joinRoom(code, socket.id, name, token);
         if (res.error) return cb({ error: res.error });
         socket.join(`room_${res.room.code}`);
-        cb({ success: true, room: gameManager.getRoomSummary(res.room.code), playerId: socket.id });
+        cb({
+          success: true,
+          room: gameManager.getRoomSummary(res.room.code),
+          playerId: socket.id,
+          isWaiting: Boolean(res.isWaiting)
+        });
       });
 
       socket.on('update_settings', (newSettings, cb) => {
@@ -221,6 +226,60 @@ describe('Full Multiplayer Socket Integration Tests', () => {
 
     host.disconnect();
     guest.disconnect();
+  });
+
+  test('Mid-race joiner receives isWaiting true and waits in lobby', async () => {
+    const host = createClient();
+    const racer = createClient();
+    const lateJoiner = createClient();
+    let roomCode;
+
+    await new Promise((resolve) => {
+      host.emit('create_room', { name: 'Host' }, (res) => {
+        roomCode = res.room.code;
+        resolve();
+      });
+    });
+
+    await new Promise((resolve) => {
+      racer.emit('join_room', { code: roomCode, name: 'Racer' }, () => resolve());
+    });
+
+    // Start race
+    await new Promise((resolve) => {
+      host.emit('start_race', () => resolve());
+    });
+
+    // Late joiner joins mid-race
+    let lateJoinRes;
+    await new Promise((resolve) => {
+      lateJoiner.emit('join_room', { code: roomCode, name: 'LateJoiner' }, (res) => {
+        lateJoinRes = res;
+        resolve();
+      });
+    });
+
+    assert.equal(lateJoinRes.success, true);
+    assert.equal(lateJoinRes.isWaiting, true, 'Late joiner must have isWaiting: true');
+
+    // Host finishes
+    await new Promise((resolve) => {
+      host.emit('player_finish', { finishTime: 20.00, errors: 0 }, () => resolve());
+    });
+
+    // Racer finishes -> race finishes -> late joiner becomes active!
+    await new Promise((resolve) => {
+      racer.emit('player_finish', { finishTime: 22.00, errors: 1 }, () => resolve());
+    });
+
+    const summary = gameManager.getRoomSummary(roomCode);
+    const lateP = summary.players.find(p => p.name === 'LateJoiner');
+    assert.ok(lateP);
+    assert.equal(lateP.isWaiting, false, 'Late joiner is now one of them directly!');
+
+    host.disconnect();
+    racer.disconnect();
+    lateJoiner.disconnect();
   });
 
 });

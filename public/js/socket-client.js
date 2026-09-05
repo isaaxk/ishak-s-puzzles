@@ -55,6 +55,7 @@
   const playerCountEl = document.getElementById('lobby-player-count');
   const btnStartRace = document.getElementById('btn-start-race');
   const hostSettingsContainer = document.getElementById('host-settings-container');
+  const waitingBannerEl = document.getElementById('lobby-waiting-banner');
 
   // Race Elements
   const rivalListEl = document.getElementById('rival-list');
@@ -167,7 +168,11 @@
       isHost = res.room.hostId === myPlayerId;
       setupLobby();
       showScreen(screenLobby);
-      showToast(`Joined Room ${res.room.code}!`);
+      if (res.isWaiting) {
+        showToast(`Joined Room ${res.room.code}! Race in progress - waiting in lobby ⏳`, 4000);
+      } else {
+        showToast(`Joined Room ${res.room.code}!`);
+      }
     });
   });
 
@@ -247,6 +252,13 @@
     lobbyRoomCodeText.textContent = currentRoom.code;
     isHost = currentRoom.hostId === myPlayerId;
 
+    // Check if the current user is waiting for the active race to finish
+    const myP = currentRoom.players?.find(p => p.id === myPlayerId || p.token === myPlayerToken);
+    const amWaiting = Boolean(myP?.isWaiting);
+    if (waitingBannerEl) {
+      waitingBannerEl.style.display = amWaiting ? 'flex' : 'none';
+    }
+
     // Adjust settings inputs based on host privileges
     const formControls = [selectDifficulty, selectMaxPlayers, togglePenalty, inputPenaltySec];
     formControls.forEach(ctrl => {
@@ -280,15 +292,17 @@
       const isMe = p.id === myPlayerId;
       const isRoomHost = p.id === currentRoom.hostId;
       const isAway = p.connected === false;
+      const isWaiting = p.isWaiting === true;
 
       const item = document.createElement('div');
-      item.className = `player-item ${isAway ? 'player-away' : ''}`;
+      item.className = `player-item ${isAway ? 'player-away' : ''} ${isWaiting ? 'player-waiting' : ''}`;
       item.innerHTML = `
         <div class="player-info">
-          <div class="player-avatar">${isAway ? '💤' : '🍾'}</div>
+          <div class="player-avatar">${isAway ? '💤' : (isWaiting ? '⏳' : '🍾')}</div>
           <span class="player-name-text">${escapeHtml(p.name)}</span>
           ${isRoomHost ? '<span class="badge-host">HOST</span>' : ''}
           ${isMe ? '<span class="badge-you">YOU</span>' : ''}
+          ${isWaiting ? '<span class="badge-waiting">⏳ WAITING</span>' : ''}
           ${isAway ? '<span class="badge-away">📱 AWAY</span>' : ''}
         </div>
         ${isHost && !isMe ? `<button class="kick-btn" data-id="${p.id}">Kick</button>` : ''}
@@ -313,12 +327,19 @@
     return div.innerHTML;
   }
 
-  // ==========================================
-  // Socket Event Listeners
-  // ==========================================
+  let wasIWaiting = false;
   socket.on('room_update', (roomSummary) => {
+    const prevWaiting = wasIWaiting;
     currentRoom = roomSummary;
     isHost = roomSummary.hostId === myPlayerId;
+
+    const myP = currentRoom.players?.find(p => p.id === myPlayerId || p.token === myPlayerToken);
+    wasIWaiting = Boolean(myP?.isWaiting);
+
+    // If I was waiting and the race finished, notify that I am now directly part of the room!
+    if (prevWaiting && !wasIWaiting) {
+      showToast('🏁 The race has finished! You are now directly part of the room for the next race! 🚀', 4500);
+    }
 
     if (screenLobby.classList.contains('active')) {
       setupLobby();
@@ -428,7 +449,7 @@
     const formattedFinish = window.formatTimeDisplay ? window.formatTimeDisplay(data.player.finishTime) : `${data.player.finishTime.toFixed(2)}s`;
     showToast(`🏁 ${data.player.name} finished in ${formattedFinish}!`);
     updateRivalTracks();
-    if (data.rankings) {
+    if (data.rankings && screenRace.classList.contains('active')) {
       displayPodium(data.rankings, currentRoom?.settings);
     }
   });
@@ -449,7 +470,8 @@
     rivalListEl.innerHTML = '';
     const total = currentRoom.puzzle ? currentRoom.puzzle.bottleCount : 12;
 
-    currentRoom.players.forEach(p => {
+    const activePlayers = (currentRoom.players || []).filter(p => !p.isWaiting);
+    activePlayers.forEach(p => {
       const row = document.createElement('div');
       row.className = 'rival-row';
       row.dataset.player = p.id;
@@ -581,7 +603,10 @@
         currentRoom = res.room;
         isHost = res.room.hostId === myPlayerId;
 
-        if (res.room.state === 'LOBBY') {
+        const myP = res.room.players?.find(p => p.id === res.playerId || p.token === myPlayerToken);
+        const amWaiting = Boolean(myP?.isWaiting || res.isWaiting);
+
+        if (res.room.state === 'LOBBY' || amWaiting) {
           setupLobby();
           showScreen(screenLobby);
         } else if (res.room.state === 'RACING' || res.room.state === 'COUNTDOWN') {
