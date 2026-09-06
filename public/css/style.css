@@ -828,7 +828,15 @@ body {
   line-height: 1.15;
 }
 
-.bubble-matched .bubble-val { color: var(--accent-green); }
+.bubble-matched .bubble-label {
+  font-size: calc(0.58rem * 1.125); /* 1/8 bigger: 0.6525rem */
+}
+
+.bubble-matched .bubble-val {
+  color: var(--accent-green);
+  font-size: calc(0.88rem * 1.125); /* 1/8 bigger: 0.99rem */
+}
+
 .bubble-errors .bubble-val { color: var(--accent-red); }
 .bubble-time .bubble-val { color: #38bdf8; font-size: 0.82rem; }
 
@@ -852,6 +860,12 @@ body {
   }
   .bubble-val {
     font-size: 0.75rem;
+  }
+  .bubble-matched .bubble-label {
+    font-size: calc(0.5rem * 1.125); /* 1/8 bigger: ~0.56rem */
+  }
+  .bubble-matched .bubble-val {
+    font-size: calc(0.75rem * 1.125); /* 1/8 bigger: ~0.84rem */
   }
 }
 
