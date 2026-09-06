@@ -549,7 +549,8 @@ body {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 0;
+  width: 100%;
 }
 
 .hud-stat {

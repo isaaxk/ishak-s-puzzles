@@ -166,7 +166,7 @@
          SCREEN 3: RACE SCREEN
     ============================================================ -->
     <main id="screen-race" class="screen">
-      <!-- 1. Leaderboard / Rival Tracker on Top -->
+      <!-- 1. Leaderboard / Rival Tracker on Top (Above Bottle Shelf) -->
       <div class="competitors-tracker">
         <div class="tracker-title">
           <span>🏆 Live Leaderboard</span>
@@ -175,23 +175,7 @@
         <div id="rival-list" class="rival-list"></div>
       </div>
 
-      <!-- 2. HUD Stats Bar Under Leaderboard -->
-      <div class="race-hud">
-        <div class="hud-stat">
-          <div class="hud-stat-label">Matched</div>
-          <div id="stat-matched" class="hud-stat-val val-matched">0 / 12</div>
-        </div>
-        <div class="hud-stat">
-          <div class="hud-stat-label">Errors</div>
-          <div id="stat-errors" class="hud-stat-val val-errors">0</div>
-        </div>
-        <div class="hud-stat">
-          <div class="hud-stat-label">Time</div>
-          <div id="stat-time" class="hud-stat-val val-time">0.00s</div>
-        </div>
-      </div>
-
-      <!-- 3. Playfield: Single Scrambled Bottle Shelf with 3 Side Bubbles on the Right -->
+      <!-- 2. Playfield: Bottle Shelf with 3 Side Bubbles on the Right -->
       <div class="playfield">
         <div class="shelf-and-bubbles-wrap">
           <div class="shelf-container">
@@ -226,6 +210,22 @@
               </div>
             </div>
           </aside>
+        </div>
+
+        <!-- 3. HUD Stats Bar Under Bottle Shelf / Under Bottles -->
+        <div class="race-hud">
+          <div class="hud-stat">
+            <div class="hud-stat-label">Matched</div>
+            <div id="stat-matched" class="hud-stat-val val-matched">0 / 12</div>
+          </div>
+          <div class="hud-stat">
+            <div class="hud-stat-label">Errors</div>
+            <div id="stat-errors" class="hud-stat-val val-errors">0</div>
+          </div>
+          <div class="hud-stat">
+            <div class="hud-stat-label">Time</div>
+            <div id="stat-time" class="hud-stat-val val-time">0.00s</div>
+          </div>
         </div>
 
         <div class="drag-instructions">
